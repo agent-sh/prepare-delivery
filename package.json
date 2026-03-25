@@ -1,0 +1,23 @@
+{
+  "name": "@agentsys/prepare-delivery",
+  "version": "0.1.0",
+  "description": "Standalone delivery pipeline - quality gates, review, docs sync, then ship",
+  "author": {
+    "name": "Avi Fenesh",
+    "email": "[email protected]",
+    "url": "https://github.com/avifenesh"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agent-sh/prepare-delivery.git"
+  },
+  "homepage": "https://github.com/agent-sh/prepare-delivery",
+  "keywords": [
+    "delivery-pipeline",
+    "code-review",
+    "quality-gates",
+    "deslop",
+    "automation"
+  ]
+}
