@@ -143,7 +143,7 @@ Thoroughness: normal
 
 Return structured results between === DESLOP_RESULT === markers.`
   }),
-  Task({ subagent_type: "next-task:test-coverage-checker", prompt: `Validate test coverage.${testGapsContext}` }),
+  Task({ subagent_type: "prepare-delivery:test-coverage-checker", prompt: `Validate test coverage.${testGapsContext}` }),
   Skill({ name: "simplify" })
 ]);
 
@@ -354,12 +354,12 @@ workflowState?.completePhase({ approved, iterations, remaining });
 <phase-4>
 ## Phase 4: Delivery Validation
 
-**Agent**: `next-task:delivery-validator` (sonnet)
+**Agent**: `prepare-delivery:delivery-validator` (sonnet)
 
 ```javascript
 workflowState?.startPhase('delivery-validation');
 const result = await Task({
-  subagent_type: "next-task:delivery-validator",
+  subagent_type: "prepare-delivery:delivery-validator",
   prompt: `Validate completion. Check: tests pass, build passes, requirements met.`
 });
 if (!result.approved) {

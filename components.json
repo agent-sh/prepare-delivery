@@ -1,12 +1,15 @@
 {
   "agents": [
-    "prepare-delivery-agent"
+    "prepare-delivery-agent",
+    "delivery-validator",
+    "test-coverage-checker"
   ],
   "skills": [
-    "prepare-delivery"
+    "prepare-delivery",
+    "orchestrate-review",
+    "validate-delivery"
   ],
   "commands": [
-    "prepare-delivery",
-    "gate-and-ship"
+    "prepare-delivery"
   ]
 }

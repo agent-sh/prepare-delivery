@@ -5,15 +5,18 @@
 ## Agents
 
 - prepare-delivery-agent
+- delivery-validator
+- test-coverage-checker
 
 ## Skills
 
 - prepare-delivery
+- orchestrate-review
+- validate-delivery
 
 ## Commands
 
 - prepare-delivery
-- gate-and-ship
 
 ## Critical Rules
 
@@ -47,13 +50,13 @@
 | Phase | Plugin | Agent/Skill |
 |-------|--------|-------------|
 | Pre-review gates | deslop | `deslop:deslop-agent` |
-| Pre-review gates | next-task | `next-task:test-coverage-checker` |
+| Pre-review gates | (own) | `prepare-delivery:test-coverage-checker` |
 | Pre-review gates | next-task | `next-task:simple-fixer` |
 | Pre-review gates | (built-in) | `/simplify` skill |
 | Config lint | agnix | `agnix` CLI (conditional) |
 | Config lint | enhance | `/enhance` skill (conditional) |
 | Review loop | (general-purpose) | 4 core + conditional reviewer agents |
-| Delivery validation | next-task | `next-task:delivery-validator` |
+| Delivery validation | (own) | `prepare-delivery:delivery-validator` |
 | Docs sync | sync-docs | `sync-docs:sync-docs-agent` |
 | Ship (via /gate-and-ship) | ship | `ship:ship` command |
 

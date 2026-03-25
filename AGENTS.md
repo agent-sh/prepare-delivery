@@ -5,15 +5,18 @@
 ## Agents
 
 - prepare-delivery-agent
+- delivery-validator
+- test-coverage-checker
 
 ## Skills
 
 - prepare-delivery
+- orchestrate-review
+- validate-delivery
 
 ## Commands
 
 - prepare-delivery
-- gate-and-ship
 
 ## Critical Rules
 
