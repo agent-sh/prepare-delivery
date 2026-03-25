@@ -239,116 +239,24 @@ if (skipReview) {
 }
 ```
 
-When not skipped, run the full review loop:
-
-### Pre-fetch Diff Risk
+When not skipped, invoke the `orchestrate-review` skill which contains the full review loop implementation (signal detection, parallel reviewer spawning, aggregation, iteration, stall detection).
 
 ```javascript
 workflowState?.startPhase('review-loop');
 
-let diffRiskContext = '';
-try {
-  const { binary } = require('@agentsys/lib');
-  const fs = require('fs');
-  const cp = require('child_process');
-  const { getStateDirPath } = require('@agentsys/lib/platform/state-dir');
-  const cwd = process.cwd();
-  const mapFile = path.join(getStateDirPath(cwd), 'repo-intel.json');
+// Delegate to orchestrate-review skill - single source of truth for the review loop
+await Skill({ name: "prepare-delivery:orchestrate-review" });
 
-  if (fs.existsSync(mapFile)) {
-    const files = cp.execFileSync('git', ['diff', '--name-only', `${BASE_BRANCH}...HEAD`], {
-      encoding: 'utf8', cwd
-    }).trim().split('\n').filter(Boolean);
-
-    if (files.length > 0) {
-      try {
-        const diffRisk = JSON.parse(binary.runAnalyzer([
-          'repo-intel', 'query', 'diff-risk',
-          '--files', files.join(','),
-          '--map-file', mapFile, cwd
-        ]));
-        if (diffRisk) {
-          diffRiskContext = '\n\nRepo intel diff-risk (focus review on highest-risk files):\n' + JSON.stringify(diffRisk, null, 2);
-        }
-      } catch (e) { /* unavailable */ }
-    }
-  }
-} catch (e) { /* repo-intel unavailable */ }
+// The skill handles:
+// - Pre-fetching repo-intel diff risk
+// - Detecting signals for conditional specialists
+// - Spawning 4 core reviewers + conditional specialists in parallel
+// - Aggregating findings, fixing issues, iterating (max 5)
+// - Stall detection (same findings hash for 2 iterations)
+// - State updates via workflowState.completePhase()
 ```
 
-### Get Changed Files
-
-```bash
-git diff --name-only ${BASE_BRANCH}...HEAD
-```
-
-### Detect Signals for Conditional Specialists
-
-| Signal | Pattern | Specialist |
-|--------|---------|------------|
-| hasDb | `/(db\|migrations?\|schema\|prisma\|sql)/i` | database specialist |
-| hasApi | `/(api\|routes?\|controllers?\|handlers?)/i` | api designer |
-| hasFrontend | `/\.(tsx\|jsx\|vue\|svelte)$/` | frontend specialist |
-| hasBackend | `/(server\|backend\|services?\|domain)/i` | backend specialist |
-| hasDevops | `/(\.github\/workflows\|Dockerfile\|k8s\|terraform)/i` | devops reviewer |
-| needsArchitecture | 20+ changed files | architecture reviewer |
-
-### Spawn ALL Reviewer Agents in Parallel
-
-**MANDATORY**: 4 core reviewers (ALWAYS) + conditional specialists.
-
-```javascript
-const reviewResults = await Promise.all([
-  Task({ subagent_type: 'general-purpose', model: 'sonnet',
-    prompt: `You are a code quality reviewer. Review these files: ${files.join(', ')}
-Focus: Style and consistency, Best practices, Bugs and logic errors, Error handling, Maintainability, Duplication
-Return findings as JSON array with: file, line, severity (critical/high/medium/low), description, suggestion${diffRiskContext}` }),
-  Task({ subagent_type: 'general-purpose', model: 'sonnet',
-    prompt: `You are a security reviewer. Review these files: ${files.join(', ')}
-Focus: Auth/authz flaws, Input validation, Injection risks, Secrets exposure, Insecure defaults
-Return findings as JSON array with: file, line, severity (critical/high/medium/low), description, suggestion${diffRiskContext}` }),
-  Task({ subagent_type: 'general-purpose', model: 'sonnet',
-    prompt: `You are a performance reviewer. Review these files: ${files.join(', ')}
-Focus: N+1 queries, Blocking operations, Hot path inefficiencies, Memory leaks
-Return findings as JSON array with: file, line, severity (critical/high/medium/low), description, suggestion${diffRiskContext}` }),
-  Task({ subagent_type: 'general-purpose', model: 'sonnet',
-    prompt: `You are a test coverage reviewer. Review these files: ${files.join(', ')}
-Focus: Missing tests, Edge case coverage, Test quality, Integration needs, Mock appropriateness
-Return findings as JSON array with: file, line, severity (critical/high/medium/low), description, suggestion${diffRiskContext}` })
-]);
-// Add conditional specialists based on detected signals
-```
-
-### Aggregate, Fix, Iterate
-
-Combine findings, deduplicate by file+line+description, group by severity.
-Fix issues in severity order: critical -> high -> medium -> low.
-Commit after each batch.
-
-Repeat until:
-- `openCount === 0` -> approved
-- Same findings hash for 2 consecutive iterations -> stall
-- 5 iterations reached -> hard limit
-
-### Iteration Rules
-- MUST run at least 1 full iteration with ALL 4 core reviewers
-- Do NOT use a single generic reviewer
-- MUST continue while `openCount > 0`
-
-### Verification Output (MANDATORY)
-
-```
-[VERIFIED] Review Loop Complete
-- Iterations: N
-- Core reviewers spawned: code-quality, security, performance, test-coverage
-- Conditional specialists: [list]
-- Findings resolved: X critical, Y high, Z medium
-- Status: approved | blocked
-```
-
-```javascript
-workflowState?.completePhase({ approved, iterations, remaining });
-```
+See `skills/orchestrate-review/SKILL.md` for the full implementation.
 </phase-3>
 
 <phase-4>

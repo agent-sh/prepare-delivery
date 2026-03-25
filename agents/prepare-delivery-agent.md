@@ -4,15 +4,11 @@ description: Run pre-ship quality gate pipeline. Invoke prepare-delivery skill a
 tools:
   - Bash(git:*)
   - Bash(npm:*)
-  - Bash(node:*)
   - Skill
   - Task
   - Read
-  - Write
-  - Edit
   - Glob
   - Grep
-  - AskUserQuestion
 model: sonnet
 ---
 

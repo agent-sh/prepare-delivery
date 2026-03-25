@@ -119,7 +119,7 @@ if (!fs.existsSync(mapFile)) {
     try {
       const { binary } = require('@agentsys/lib');
       const output = binary.runAnalyzer(['repo-intel', 'init', cwd]);
-      const stateDirPath = path.join(cwd, stateDir);
+      const stateDirPath = getStateDirPath(cwd);
       if (!fs.existsSync(stateDirPath)) fs.mkdirSync(stateDirPath, { recursive: true });
       fs.writeFileSync(mapFile, output);
     } catch (e) {
