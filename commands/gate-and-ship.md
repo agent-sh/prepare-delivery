@@ -1,11 +1,11 @@
 ---
-description: "Full delivery pipeline - runs /prepare-delivery (quality gates) then /ship. Use after completing implementation to go from code to merged PR in one command."
-codex-description: 'Use when user asks to "deliver", "deliver and ship", "review and ship", "quality gates and ship", "full delivery", or wants to go from finished implementation to merged PR.'
+description: "Quality gates then ship - runs /prepare-delivery then /ship in one command. Use after completing implementation to go from code to merged PR."
+codex-description: 'Use when user asks to "gate and ship", "review and ship", "quality gates and ship", "prepare and ship", or wants to go from finished implementation to merged PR in one step.'
 argument-hint: "[--base=BRANCH] [--skip-review] [--skip-docs]"
 allowed-tools: Bash(git:*), Bash(gh:*), Bash(npm:*), Bash(node:*), Read, Write, Edit, Glob, Grep, Task, Skill, AskUserQuestion
 ---
 
-# /deliver - Prepare + Ship
+# /gate-and-ship - Quality Gates + Ship
 
 Chains `/prepare-delivery` (quality gates) then `/ship` (PR + merge).
 Single command to go from finished implementation to merged PR.
@@ -71,25 +71,25 @@ try {
   // Step 1: prepare-delivery
   // Step 2: ship:ship
 } catch (error) {
-  console.log(`[ERROR] Delivery failed: ${error.message}`);
-  console.log('Fix the issue and run /deliver again, or run /prepare-delivery and /ship separately.');
+  console.log(`[ERROR] Failed: ${error.message}`);
+  console.log('Fix the issue and run /gate-and-ship again, or run /prepare-delivery and /ship separately.');
 }
 ```
 
 ## Examples
 
 ```bash
-# Full delivery: quality gates + ship
-/deliver
+# Full: quality gates + ship
+/gate-and-ship
 
 # Against a specific base branch
-/deliver --base=develop
+/gate-and-ship --base=develop
 
 # Skip review, still ship
-/deliver --skip-review
+/gate-and-ship --skip-review
 
 # Combine flags
-/deliver --base=develop --skip-docs
+/gate-and-ship --base=develop --skip-docs
 ```
 
 ## Composability
@@ -97,10 +97,10 @@ try {
 This command composes two independent commands:
 
 ```
-/deliver = /prepare-delivery + /ship
+/gate-and-ship = /prepare-delivery + /ship
 ```
 
 Each can be run independently:
 - `/prepare-delivery` - run quality gates only, decide later whether to ship
 - `/ship` - ship directly if you've already reviewed and validated
-- `/deliver` - do both in sequence
+- `/gate-and-ship` - do both in sequence

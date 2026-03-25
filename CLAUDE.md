@@ -5,7 +5,7 @@
 ## Commands
 
 - prepare-delivery
-- deliver
+- gate-and-ship
 
 ## Critical Rules
 

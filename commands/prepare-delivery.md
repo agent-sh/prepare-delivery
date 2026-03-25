@@ -9,7 +9,7 @@ allowed-tools: Bash(git:*), Bash(gh:*), Bash(npm:*), Bash(node:*), Read, Write, 
 
 Run quality gates on your implementation before shipping.
 Executes: pre-review gates (deslop + simplify + test-coverage), review loop, delivery validation, and docs sync.
-Does NOT ship - use `/deliver` to prepare + ship, or run `/ship` separately after.
+Does NOT ship - use `/gate-and-ship` to prepare + ship, or run `/ship` separately after.
 
 ---
 
@@ -376,7 +376,7 @@ Use the Edit tool to apply each fix. Commit message: "docs: sync documentation w
 
 ```javascript
 console.log('[OK] All quality gates passed. Ready to ship.');
-console.log('Run /ship to create PR and merge, or /deliver to prepare + ship in one step.');
+console.log('Run /ship to create PR and merge, or /gate-and-ship to prepare + ship in one step.');
 ```
 
 ## Error Handling
