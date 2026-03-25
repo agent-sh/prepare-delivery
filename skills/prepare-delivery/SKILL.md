@@ -214,11 +214,16 @@ if (needsAgnix || needsEnhance) {
 
   await Promise.all(lintTasks);
 
-  // Commit any auto-fixes from enhance
+  // Commit any auto-fixes from enhance (stage only modified tracked files)
   const status = await run('git', ['status', '--porcelain']);
   if (status.trim()) {
-    await run('git', ['add', '-A']);
-    await run('git', ['commit', '-m', 'fix: apply config lint auto-fixes']);
+    const modified = status.trim().split('\n')
+      .filter(l => l.startsWith(' M') || l.startsWith('M '))
+      .map(l => l.trim().split(/\s+/).pop());
+    if (modified.length > 0) {
+      await run('git', ['add', ...modified]);
+      await run('git', ['commit', '-m', 'fix: apply config lint auto-fixes']);
+    }
   }
 } else {
   console.log('[OK] No agent/skill/plugin config changes - skipping agnix/enhance');

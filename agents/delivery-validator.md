@@ -41,8 +41,7 @@ You MUST execute the `validate-delivery` skill to perform validation. The skill 
 
 1. Invoke the `validate-delivery` skill
 2. Load task context from workflow state
-3. Run all 5 validation checks
-4. Run diff-risk scoring (optional - only when repo-intel map exists)
+3. Run all 5 core validation checks + 1 optional advisory check (diff-risk)
 5. Aggregate results with risk annotations
 6. If all pass: approve for shipping (include risk summary if available)
 7. If any fail: return fix instructions
@@ -114,6 +113,6 @@ Uses **sonnet** model because:
 ## Integration Points
 
 This agent is invoked by:
-- Phase 4 of `/prepare-delivery` pipeline
-- Phase 10 of `/next-task` workflow (via `prepare-delivery:delivery-validator`)
+- `/prepare-delivery` pipeline (after review loop)
+- `/next-task` workflow (via `prepare-delivery:delivery-validator`)
 - After review loop approval

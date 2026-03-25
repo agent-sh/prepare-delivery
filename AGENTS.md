@@ -4,15 +4,16 @@
 
 ## Agents
 
-- prepare-delivery-agent
-- delivery-validator
-- test-coverage-checker
+- **prepare-delivery-agent** (sonnet) - orchestrates the full pre-ship pipeline via skill
+- **delivery-validator** (sonnet) - autonomous pass/fail validation after review approval
+- **test-coverage-checker** (sonnet) - validates test quality for changed files (advisory)
 
 ## Skills
 
-- prepare-delivery
-- orchestrate-review
-- validate-delivery
+- **prepare-delivery** - 5-phase pipeline: deslop, config lint, review, validation, docs
+- **check-test-coverage** - test existence, quality, and risk-weighted validation
+- **orchestrate-review** - multi-pass parallel code review with iteration
+- **validate-delivery** - tests, build, requirements, diff-risk checks
 
 ## Commands
 
