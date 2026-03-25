@@ -42,21 +42,6 @@
 4. Quality output
 5. Simplicity
 
-## Cross-Plugin Dependencies
-
-| Phase | Plugin | Agent/Skill |
-|-------|--------|-------------|
-| Pre-review gates | deslop | `deslop:deslop-agent` |
-| Pre-review gates | next-task | `next-task:test-coverage-checker` |
-| Pre-review gates | next-task | `next-task:simple-fixer` |
-| Pre-review gates | (built-in) | `/simplify` skill |
-| Config lint | agnix | `agnix` CLI (conditional) |
-| Config lint | enhance | `/enhance` skill (conditional) |
-| Review loop | (general-purpose) | 4 core + conditional reviewer agents |
-| Delivery validation | next-task | `next-task:delivery-validator` |
-| Docs sync | sync-docs | `sync-docs:sync-docs-agent` |
-| Ship (via /gate-and-ship) | ship | `ship:ship` command |
-
 ## References
 
 - Part of the [agentsys](https://github.com/agent-sh/agentsys) ecosystem

@@ -1,0 +1,12 @@
+{
+  "agents": [
+    "prepare-delivery-agent"
+  ],
+  "skills": [
+    "prepare-delivery"
+  ],
+  "commands": [
+    "prepare-delivery",
+    "gate-and-ship"
+  ]
+}
