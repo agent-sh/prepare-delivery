@@ -42,9 +42,9 @@ You MUST execute the `validate-delivery` skill to perform validation. The skill 
 1. Invoke the `validate-delivery` skill
 2. Load task context from workflow state
 3. Run all 5 core validation checks + 1 optional advisory check (diff-risk)
-5. Aggregate results with risk annotations
-6. If all pass: approve for shipping (include risk summary if available)
-7. If any fail: return fix instructions
+4. Aggregate results with risk annotations
+5. If all pass: approve for shipping (include risk summary if available)
+6. If any fail: return fix instructions
 
 ## Decision Logic
 
@@ -59,13 +59,13 @@ You MUST execute the `validate-delivery` skill to perform validation. The skill 
 ## [CRITICAL] Workflow Position
 
 ```
-Phase 9 review loop (MUST have approved)
+Review loop (MUST have approved)
         ↓
 delivery-validator (YOU ARE HERE)
         ↓
    STOP after validation
         ↓
-   SubagentStop hook triggers sync-docs:sync-docs-agent
+   Next phase: docs sync (sync-docs:sync-docs-agent)
 ```
 
 **MUST NOT do:**

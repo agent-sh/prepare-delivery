@@ -132,7 +132,7 @@ function parseDeslop(output) {
   return match ? JSON.parse(match[1]) : { fixes: [] };
 }
 
-// Run all three in parallel
+// Run all three in parallel (simplify applies changes in-place, no return value needed)
 const [deslopResult, coverageResult] = await Promise.all([
   Task({
     subagent_type: "deslop:deslop-agent",
