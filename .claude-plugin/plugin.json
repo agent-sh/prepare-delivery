@@ -1,0 +1,19 @@
+{
+  "name": "prepare-delivery",
+  "version": "0.1.0",
+  "description": "Pre-ship quality gates and /gate-and-ship parent command",
+  "author": {
+    "name": "Avi Fenesh",
+    "email": "[email protected]",
+    "url": "https://github.com/avifenesh"
+  },
+  "homepage": "https://github.com/agent-sh/prepare-delivery",
+  "repository": "https://github.com/agent-sh/prepare-delivery",
+  "license": "MIT",
+  "keywords": [
+    "delivery-pipeline",
+    "code-review",
+    "quality-gates",
+    "automation"
+  ]
+}
