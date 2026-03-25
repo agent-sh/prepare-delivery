@@ -1,14 +1,15 @@
 ---
-description: "Run the delivery pipeline standalone - pre-review gates, review loop, delivery validation, docs sync, then ship. Use after completing implementation outside the /next-task workflow."
-codex-description: 'Use when user asks to "deliver", "prepare delivery", "run delivery pipeline", "review and ship", "start pre-gates", "deslop and ship", "run quality gates", or has finished implementation manually and wants to go through quality gates and ship.'
+description: "Run pre-ship quality gates - deslop, simplify, review loop, delivery validation, and docs sync. Does not ship. Use after completing implementation, before /ship or /deliver."
+codex-description: 'Use when user asks to "prepare delivery", "run quality gates", "review code", "run pre-gates", "deslop and review", "validate before shipping", or has finished implementation and wants quality checks before shipping.'
 argument-hint: "[--base=BRANCH] [--skip-review] [--skip-docs]"
 allowed-tools: Bash(git:*), Bash(gh:*), Bash(npm:*), Bash(node:*), Read, Write, Edit, Glob, Grep, Task, Skill, AskUserQuestion
 ---
 
-# /prepare-delivery - Standalone Delivery Pipeline
+# /prepare-delivery - Pre-Ship Quality Gates
 
-Run the post-implementation delivery pipeline without the full /next-task workflow.
-Executes: pre-review gates, review loop, delivery validation, docs sync, then hands off to ship:ship.
+Run quality gates on your implementation before shipping.
+Executes: pre-review gates (deslop + simplify + test-coverage), review loop, delivery validation, and docs sync.
+Does NOT ship - use `/deliver` to prepare + ship, or run `/ship` separately after.
 
 ---
 
@@ -371,24 +372,12 @@ Use the Edit tool to apply each fix. Commit message: "docs: sync documentation w
 ```
 </phase-11>
 
-<phase-12>
-## Phase 12: Handoff to ship:ship
+## Done
 
 ```javascript
-workflowState?.startPhase('shipping');
-console.log('[OK] Phase 12: Handing off to ship:ship...');
-
-const shipArgs = [];
-if (workflowState) {
-  const flowPath = workflowState.getFlowPath();
-  shipArgs.push(`--state-file "${flowPath}"`);
-}
-if (BASE_BRANCH) {
-  shipArgs.push(`--base ${BASE_BRANCH}`);
-}
-await Skill({ name: "ship:ship", args: shipArgs.join(' ') });
+console.log('[OK] All quality gates passed. Ready to ship.');
+console.log('Run /ship to create PR and merge, or /deliver to prepare + ship in one step.');
 ```
-</phase-12>
 
 ## Error Handling
 
@@ -397,7 +386,7 @@ try {
   // ... delivery phases ...
 } catch (error) {
   workflowState?.failPhase(error.message);
-  console.log(`[ERROR] Delivery failed: ${error.message}`);
+  console.log(`[ERROR] Preparation failed: ${error.message}`);
   console.log('Fix the issue and run /prepare-delivery again to retry.');
 }
 ```
@@ -405,10 +394,10 @@ try {
 ## Examples
 
 ```bash
-# Full delivery pipeline
+# Run all quality gates
 /prepare-delivery
 
-# Deliver against a specific base branch
+# Against a specific base branch
 /prepare-delivery --base=develop
 
 # Skip review loop (already reviewed)

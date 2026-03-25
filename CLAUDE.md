@@ -1,10 +1,11 @@
 # prepare-delivery
 
-> Standalone delivery pipeline - quality gates, review, docs sync, then ship
+> Pre-ship quality gates - deslop, simplify, review loop, delivery validation, docs sync
 
 ## Commands
 
 - prepare-delivery
+- deliver
 
 ## Critical Rules
 
@@ -46,7 +47,7 @@ This plugin orchestrates agents and skills from other plugins:
 | Review loop | (general-purpose) | 4 core + conditional reviewer agents |
 | Delivery validation | next-task | `next-task:delivery-validator` |
 | Docs sync | sync-docs | `sync-docs:sync-docs-agent` |
-| Ship | ship | `ship:ship` command |
+| Ship (via /deliver) | ship | `ship:ship` command |
 
 ## References
 
