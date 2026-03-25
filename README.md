@@ -40,7 +40,7 @@ claude mcp add-json prepare-delivery '{"type":"url","url":"https://github.com/ag
 /prepare-delivery  = quality gates only
 /ship              = PR + CI + merge only
 /gate-and-ship     = /prepare-delivery + /ship
-/next-task         = full workflow (uses /prepare-delivery for phases 8-11)
+/next-task         = full workflow (uses prepare-delivery agents in phases 8-10)
 ```
 
 ## Components

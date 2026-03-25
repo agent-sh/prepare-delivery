@@ -1,7 +1,7 @@
 {
   "name": "@agentsys/prepare-delivery",
   "version": "0.1.0",
-  "description": "Standalone delivery pipeline - quality gates, review, docs sync, then ship",
+  "description": "Pre-ship quality gates - deslop, simplify, review loop, delivery validation, docs sync",
   "author": {
     "name": "Avi Fenesh",
     "email": "[email protected]",

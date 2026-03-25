@@ -1,7 +1,7 @@
 ---
 name: orchestrate-review
 version: 0.1.0
-description: "Use when user asks to \"deep review the code\", \"thorough code review\", \"multi-pass review\", or when orchestrating the Phase 9 review loop. Provides review pass definitions (code quality, security, performance, test coverage), signal detection patterns, and iteration algorithms."
+description: "Use when user asks to \"deep review the code\", \"thorough code review\", \"multi-pass review\", or when orchestrating the review loop in a delivery pipeline. Provides review pass definitions (code quality, security, performance, test coverage), signal detection patterns, and iteration algorithms."
 metadata:
   short-description: "Multi-pass code review orchestration"
 ---
@@ -14,7 +14,7 @@ Multi-pass code review with parallel Task agents, finding aggregation, and itera
 
 Select conditional specialists based on the review scope:
 - **User request**: Detect signals from content user refers to (files, directory, module)
-- **Workflow (Phase 9)**: Detect signals from changed files only
+- **Workflow (delivery pipeline)**: Detect signals from changed files only
 - **Project audit**: Detect signals from project structure as a whole
 
 ## Review Passes
