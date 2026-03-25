@@ -28,6 +28,7 @@ claude mcp add-json prepare-delivery '{"type":"url","url":"https://github.com/ag
 | Phase | What runs | Mode |
 |-------|-----------|------|
 | 1 | deslop + simplify + test-coverage-checker | Parallel |
+| | _Deslop fixes are applied via next-task:simple-fixer when found_ | |
 | 2 | agnix + enhance | Conditional (when changes touch agent/skill configs) |
 | 3 | 4 core reviewers + conditional specialists | Iterative (max 5) |
 | 4 | delivery-validator (tests, build, requirements) | Blocking |
@@ -66,10 +67,15 @@ claude mcp add-json prepare-delivery '{"type":"url","url":"https://github.com/ag
 | Phase | Plugin | Agent/Skill |
 |-------|--------|-------------|
 | Pre-review gates | [deslop](https://github.com/agent-sh/deslop) | deslop:deslop-agent |
+| Pre-review gates | (own) | prepare-delivery:test-coverage-checker |
 | Pre-review gates | [next-task](https://github.com/agent-sh/next-task) | next-task:simple-fixer |
-| Config lint | [agnix](https://github.com/agent-sh/agnix) | agnix CLI |
-| Config lint | [enhance](https://github.com/agent-sh/enhance) | /enhance skill |
+| Pre-review gates | (built-in) | /simplify skill |
+| Config lint | [agnix](https://github.com/agent-sh/agnix) | agnix CLI (conditional) |
+| Config lint | [enhance](https://github.com/agent-sh/enhance) | /enhance skill (conditional) |
+| Review loop | (general-purpose) | 4 core + conditional reviewer agents |
+| Delivery validation | (own) | prepare-delivery:delivery-validator |
 | Docs sync | [sync-docs](https://github.com/agent-sh/sync-docs) | sync-docs:sync-docs-agent |
+| Ship (via /gate-and-ship) | [ship](https://github.com/agent-sh/ship) | ship:ship command |
 
 ## Platforms
 
