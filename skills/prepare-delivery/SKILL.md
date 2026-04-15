@@ -136,7 +136,8 @@ function parseDeslop(output) {
 // /simplify is third-party (not bundled with agentsys); invoke only when installed,
 // swallow errors so a missing skill never blocks delivery.
 const simplifyCall = Skill({ name: "simplify" }).catch(err => {
-  console.log(`[INFO] /simplify skipped (not installed or failed): ${err.message}`);
+  const reason = err && err.message ? err.message : String(err);
+  console.log(`[WARN] /simplify skipped (not installed or failed): ${reason}`);
   return null;
 });
 
