@@ -53,7 +53,7 @@
 | Pre-review gates | deslop | `deslop:deslop-agent` |
 | Pre-review gates | (own) | `prepare-delivery:test-coverage-checker` |
 | Pre-review gates | next-task | `next-task:simple-fixer` |
-| Pre-review gates | (built-in) | `/simplify` skill |
+| Pre-review gates | (third-party, optional) | `/simplify` skill - invoked when installed; failures are swallowed |
 | Config lint | agnix | `agnix` CLI (conditional) |
 | Config lint | enhance | `/enhance` skill (conditional) |
 | Review loop | (general-purpose) | 4 core + conditional reviewer agents |
