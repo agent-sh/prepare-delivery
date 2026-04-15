@@ -14,7 +14,7 @@ Pre-ship quality gate pipeline. Runs all checks needed before a PR can be create
 ```
 Phase 1: Pre-review gates (parallel)
   - deslop:deslop-agent     (AI slop cleanup)
-  - /simplify               (code simplification)
+  - /simplify               (code simplification, optional - skipped if not installed)
   - test-coverage-checker    (test coverage validation)
 
 Phase 2: Config lint (conditional)
@@ -132,7 +132,15 @@ function parseDeslop(output) {
   return match ? JSON.parse(match[1]) : { fixes: [] };
 }
 
-// Run all three in parallel (simplify applies changes in-place, no return value needed)
+// Run pre-review gates in parallel.
+// /simplify is third-party (not bundled with agentsys); invoke only when installed,
+// swallow errors so a missing skill never blocks delivery.
+const simplifyCall = Skill({ name: "simplify" }).catch(err => {
+  const reason = err && err.message ? err.message : String(err);
+  console.log(`[WARN] /simplify skipped (not installed or failed): ${reason}`);
+  return null;
+});
+
 const [deslopResult, coverageResult] = await Promise.all([
   Task({
     subagent_type: "deslop:deslop-agent",
@@ -144,7 +152,7 @@ Thoroughness: normal
 Return structured results between === DESLOP_RESULT === markers.`
   }),
   Task({ subagent_type: "prepare-delivery:test-coverage-checker", prompt: `Validate test coverage.${testGapsContext}` }),
-  Skill({ name: "simplify" })
+  simplifyCall
 ]);
 
 // Apply deslop fixes if found
