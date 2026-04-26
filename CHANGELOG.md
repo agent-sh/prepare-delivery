@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.2] - 2026-04-26
+
+### Docs
+- Added REVIEWER-CONTRACT marker comments and drift-sync note in CLAUDE.md - when editing the false-positive contract in orchestrate-review/SKILL.md, update the matching block in audit-project/commands/audit-project-agents.md (PR #3).
+
 ## [0.1.1] - 2026-04-26
 
 ### Security
