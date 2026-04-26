@@ -29,6 +29,7 @@
 6. **Use single dash for em-dashes** - In prose, use ` - ` (single dash with spaces), never ` -- `.
 7. **Report script failures before manual fallback** - Never silently bypass broken tooling.
 8. **Token efficiency** - Save tokens over decorations.
+9. **Reviewer contract sync** - The REVIEWER CONTRACT block in `skills/orchestrate-review/SKILL.md` is duplicated in `audit-project/commands/audit-project-agents.md`. When editing either block, update both. No tool enforces this today; a CI check is a known follow-up.
 
 ## Model Selection
 
