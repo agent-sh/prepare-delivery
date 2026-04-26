@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.1] - 2026-04-26
+
+### Security
+
+- orchestrate-review caps false-positive ratio at 50% to prevent prompt-injected reviewers from zeroing the gate counter; requires a non-empty falsePositiveReason on every flag.
+
+### Fixed
+
+- 'Treat flagged findings as open' re-aggregates in place instead of restarting the loop (was discarding the strip).
+
 ## [0.1.0] - 2026-03-25
 
 ### Added
