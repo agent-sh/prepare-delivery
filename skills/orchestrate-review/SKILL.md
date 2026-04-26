@@ -344,25 +344,35 @@ while (iteration <= MAX_ITERATIONS) {
     });
     const choice = response.answers?.[question] ?? response[question];
     if (choice === 'Treat flagged findings as open') {
-      // Strip falsePositive flags and re-aggregate in the next iteration
+      // Strip falsePositive flags and re-aggregate the CURRENT results in
+      // place. A `continue` here would restart the while loop, which would
+      // spawn fresh reviewers and discard the strip (results is reassigned
+      // at step 1). Falling through with mutated flags + re-aggregated
+      // findings lets the existing iteration proceed on the corrected view.
       for (const r of results) {
         for (const f of (r.findings || [])) {
           f.falsePositive = false;
           delete f.falsePositiveReason;
         }
       }
-      continue;
+      const reAggregated = aggregateFindings(results);
+      // Replace the fields the rest of the loop reads. We don't mutate
+      // `findings` itself because it may be frozen or reused elsewhere.
+      Object.assign(findings, reAggregated, { blocked: false, suspicious: false });
+      // fall through to step 3 (openCount check) with the re-aggregated view
     } else if (choice === 'Override and approve') {
       workflowState.completePhase({
         approved: true, iterations: iteration,
         suspicious: true, falsePositiveRatio: findings.falsePositiveRatio
       });
+      break;
     } else {
       workflowState.failPhase(
         `Review blocked: ${findings.blockReason}`
       );
+      break;
     }
-    break;
+    // "Treat flagged findings as open" falls through to step 3 below.
   }
 
   // 3. Check if done
