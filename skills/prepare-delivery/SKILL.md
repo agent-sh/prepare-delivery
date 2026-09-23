@@ -19,7 +19,7 @@ Arguments: `$ARGUMENTS` (`--base=BRANCH`, `--skip-review`, `--skip-docs`).
 node <plugin>/scripts/delivery.js context [--base=BRANCH]
 ```
 
-It prints the branch, the base and the ref it diffs against (the remote branch when there is one), `changedFiles` (`base...HEAD`), uncommitted paths, any existing flow state, and repo-intel signals for the changed files (`diffRisk`, `testGaps`, `bugspots`) when a map and the analyzer are installed. Stop with an error if `onBase` is true or `changedFiles` is empty: there is nothing to deliver.
+It prints the branch, the base and the ref it diffs against (the remote branch when there is one), `changedFiles` (`base...HEAD`, files that still exist), `deletedFiles`, uncommitted paths, any existing flow state, and repo-intel signals for the changed files (`diffRisk`, `testGaps`, `bugspots`) when a map and the analyzer are installed. Stop with an error if `onBase` is true or `changedFiles` is empty: there is nothing to deliver.
 
 ## Gates
 
@@ -31,7 +31,7 @@ Run them in this order; each later gate checks the output of the earlier ones.
    - The `simplify` skill, when the harness has it. It is optional; if it is missing or fails, note that and go on.
 2. **Config lint**, only when changed files include agent configuration (`agents/`, `skills/`, `commands/` markdown, `SKILL.md`, `CLAUDE.md`, `AGENTS.md`, `plugin.json`, `components.json`, hook files). Run `agnix .` if it is installed and fix errors it reports in files this branch changed; errors elsewhere are reported, not fixed. Run the `enhance` skill with `--apply` when it is installed. Missing tools are skipped, not failures.
 3. **Review loop**, unless `--skip-review`: follow the `orchestrate-review` skill over the changed files, with the risk order from `diffRisk`. It ends approved, blocked (user chose to stop), or overridden.
-4. **Delivery validation**: spawn `prepare-delivery:delivery-validator` with the base ref, the changed files, the review outcome (`approved`, `skipped`, or `overridden`) and the task description if the flow state has one. If it does not approve, stop here and return its `fixInstructions`: docs sync on a failing branch is wasted work.
+4. **Delivery validation**: spawn `prepare-delivery:delivery-validator` with the base ref, the changed and deleted files, the review outcome (`approved`, `skipped`, or `overridden`) and the task description if the flow state has one. If it does not approve, stop here and return its `fixInstructions`: docs sync on a failing branch is wasted work.
 5. **Docs sync**, unless `--skip-docs`: spawn `sync-docs:sync-docs-agent` with `Mode: apply`, `Scope: before-pr`. It returns `fixes` in a `=== SYNC_DOCS_RESULT ===` block and does not edit; apply them yourself.
 
 A gate whose plugin is not installed (deslop, sync-docs) is skipped with a `[WARN]` line in the report, not failed. When Task is not available, run each agent's skill inline instead (`deslop`, `check-test-coverage`, `validate-delivery`, `sync-docs`).
@@ -54,7 +54,7 @@ Each gate that changed files gets its own commit: `fix: clean up AI slop`, `fix:
 node <plugin>/scripts/delivery.js flow --json '{"git":{"baseBranch":"<base>"},"phase":"docs-update","status":"in_progress","preReviewResult":{...},"reviewResult":{"approved":true,"iterations":2},"deliveryResult":{"approved":true},"docsResult":{"docsUpdated":true}}'
 ```
 
-It creates a standalone flow when none exists, updates one owned by this branch, and leaves a flow owned by another branch untouched (it reports `written: false`). Write `reviewResult.approved: true` only when the review loop approved, or was skipped by flag with `skipped: true`.
+It creates a standalone flow when none exists, updates one owned by this branch, replaces a standalone flow left by another branch, and leaves a `/next-task` flow owned by another branch untouched (it reports `written: false`). Write `reviewResult.approved: true` only when the review loop approved, or was skipped by flag with `skipped: true`.
 
 ## Done
 

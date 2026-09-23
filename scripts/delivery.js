@@ -105,6 +105,10 @@ function cmdContext(args) {
   const changedFiles = baseRef
     ? (git(['diff', '--name-only', '--diff-filter=d', `${baseRef}...HEAD`], cwd) || '').split('\n').filter(Boolean)
     : [];
+  // Listed apart so reviewers get files that exist, and the validator still sees deleted tests.
+  const deletedFiles = baseRef
+    ? (git(['diff', '--name-only', '--diff-filter=D', `${baseRef}...HEAD`], cwd) || '').split('\n').filter(Boolean)
+    : [];
   const dirty = (git(['status', '--porcelain'], cwd) || '').split('\n').filter(Boolean);
   const flowFile = path.join(stateDirPath(cwd), 'flow.json');
   let flow = null;
@@ -115,6 +119,7 @@ function cmdContext(args) {
     baseRef,
     onBase: branch === base,
     changedFiles,
+    deletedFiles,
     uncommitted: dirty,
     stateDir: stateDirPath(cwd),
     flow: flow ? { file: flowFile, taskId: flow.task && flow.task.id, branch: flow.git && flow.git.branch } : null,
@@ -128,6 +133,7 @@ function cmdContext(args) {
 // outside strings. A lazy regex stops at the first "}" and breaks on nested objects.
 function firstJson(text, from = 0) {
   for (let start = text.indexOf('{', from); start !== -1; start = text.indexOf('{', start + 1)) {
+    let end = -1;
     let depth = 0;
     let inString = false;
     let escaped = false;
@@ -142,9 +148,14 @@ function firstJson(text, from = 0) {
       if (c === '"') inString = true;
       else if (c === '{') depth++;
       else if (c === '}' && --depth === 0) {
-        try { return JSON.parse(text.slice(start, i + 1)); } catch { break; }
+        try { return JSON.parse(text.slice(start, i + 1)); } catch { /* not JSON */ }
+        // Resume after the failed object: an inner fragment of a malformed result is not the result.
+        end = i;
+        break;
       }
     }
+    if (end === -1) return null;
+    start = end;
   }
   return null;
 }
@@ -203,9 +214,10 @@ function aggregate(results, { stripFalsePositives = false } = {}) {
   const ratio = items.length ? flagged / items.length : 0;
   const blocked = items.length >= 10 && ratio > 0.5;
   const totals = Object.fromEntries(Object.keys(SEVERITY).map(s => [s, open.filter(i => i.severity === s).length]));
-  // Same open findings two iterations in a row means the fixes are not landing.
+  // Same open findings two iterations in a row means the fixes are not landing. Fresh reviewers
+  // reword descriptions and edits shift lines, so the key is pass, file and severity only.
   const hash = crypto.createHash('sha256')
-    .update(JSON.stringify(open.map(i => i.id).sort()))
+    .update(JSON.stringify(open.map(i => `${i.pass}:${i.file}:${i.severity}`).sort()))
     .digest('hex').slice(0, 16);
   return {
     items,
@@ -247,7 +259,8 @@ function merge(target, patch) {
 }
 
 // Writes the fields /ship reads from --state-file (git.branch, git.baseBranch, reviewResult).
-// A flow owned by another branch belongs to someone else's /next-task run and is left alone.
+// A /next-task flow owned by another branch is someone else's run and is left alone. A standalone
+// flow from another branch is this script's own leftover and is replaced.
 function updateFlow(cwd, patch) {
   const branch = git(['branch', '--show-current'], cwd);
   const dir = stateDirPath(cwd);
@@ -256,7 +269,12 @@ function updateFlow(cwd, patch) {
   if (fs.existsSync(file)) {
     try { flow = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return { written: false, file, reason: 'flow.json is not valid JSON' }; }
     const owner = flow && flow.git && flow.git.branch;
-    if (owner && owner !== branch) return { written: false, file, reason: `flow.json belongs to branch ${owner}` };
+    if (owner && owner !== branch) {
+      if (!(flow.task && flow.task.id === 'standalone')) {
+        return { written: false, file, reason: `flow.json belongs to a /next-task run on branch ${owner}` };
+      }
+      flow = null;
+    }
   }
   if (!flow) {
     flow = {

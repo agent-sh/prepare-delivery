@@ -12,7 +12,7 @@ Decide, without asking anyone, whether the branch is ready to ship, and if not, 
 
 ## Inputs
 
-From the caller: the base ref, the changed files, the review outcome, and the task description when there is one. In the `/next-task` flow the flow state (`{stateDir}/flow.json`) has `task` and `reviewResult`. Missing context: run `node <plugin>/scripts/delivery.js context` for base, changed files and `diffRisk`.
+From the caller: the base ref, the changed and deleted files, the review outcome, and the task description when there is one. In the `/next-task` flow the flow state (`{stateDir}/flow.json`) has `task` and `reviewResult`. Missing context: run `node <plugin>/scripts/delivery.js context` for base, `changedFiles`, `deletedFiles` and `diffRisk`.
 
 ## Checks
 
@@ -22,7 +22,7 @@ From the caller: the base ref, the changed files, the review outcome, and the ta
 | `testsPassing` | the repo's test command exits 0. Find it the way a maintainer would: `package.json` scripts, `Cargo.toml`, `go.mod`, `pyproject.toml` or `pytest.ini`, a Makefile target, CI config. No test suite at all passes with a note. |
 | `buildPassing` | the build or type check exits 0 (`npm run build`, `cargo build`, `go build ./...`, `tsc --noEmit`). No build step passes with a note. |
 | `requirementsMet` | each requirement in the task description is implemented in the diff. Read the task, then the diff; a bullet list is a hint, not the only source. No task description passes with a note. |
-| `noRegressions` | the branch does not delete, skip or weaken existing tests (`.skip`, `xit`, `#[ignore]`, `@pytest.mark.skip`, removed assertions) without a stated reason in the commit or task. |
+| `noRegressions` | the branch does not delete (check `deletedFiles`), skip or weaken existing tests (`.skip`, `xit`, `#[ignore]`, `@pytest.mark.skip`, removed assertions) without a stated reason in the commit or task. |
 | `diffRisk` | always passes; advisory. |
 
 Run tests and build on the working tree as it is. Do not stash, reset or check out other refs to compare: the user's uncommitted work lives there.

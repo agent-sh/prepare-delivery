@@ -7,12 +7,10 @@ Run all quality checks on your implementation before shipping - deslop, simplify
 ## Installation
 
 ```bash
-# Via agentsys (recommended)
-claude plugin marketplace add agent-sh/agentsys
-
-# Standalone
-claude mcp add-json prepare-delivery '{"type":"url","url":"https://github.com/agent-sh/prepare-delivery.git"}'
+agentsys install prepare-delivery
 ```
+
+Or add the marketplace in Claude Code with `claude plugin marketplace add agent-sh/agentsys` and install `prepare-delivery` from it.
 
 ## Usage
 

@@ -44,6 +44,16 @@ test('extract uses the last block and tolerates a code fence', () => {
   assert.deepStrictEqual(extractResult(text, 'R'), { n: { m: 2 } });
 });
 
+test('extract does not return an inner fragment of a malformed result', () => {
+  const text = '=== R ===\n{"fixes": [{"file": "a.js", "line": 1}], }\n=== END_RESULT ===';
+  assert.strictEqual(extractResult(text, 'R'), null);
+});
+
+test('extract skips a malformed object and finds a later valid one', () => {
+  const text = '=== R ===\n{bad: {"inner": 1}}\n{"ok": {"nested": true}}\n=== END_RESULT ===';
+  assert.deepStrictEqual(extractResult(text, 'R'), { ok: { nested: true } });
+});
+
 test('extract returns null without a block', () => {
   assert.strictEqual(extractResult('no markers here {"a": 1}', 'R'), null);
 });
@@ -89,6 +99,27 @@ test('aggregate hash is stable for the same open findings', () => {
   assert.strictEqual(a.hash, b.hash);
 });
 
+test('aggregate hash survives reworded findings and shifted lines', () => {
+  const a = aggregate([{ pass: 'security', findings: [{ file: 'a.js', line: 10, severity: 'high', description: 'SQL injection in query' }] }]);
+  const b = aggregate([{ pass: 'security', findings: [{ file: 'a.js', line: 14, severity: 'high', description: 'Query built from user input' }] }]);
+  assert.strictEqual(a.hash, b.hash);
+  const c = aggregate([{ pass: 'security', findings: [{ file: 'a.js', line: 14, severity: 'medium', description: 'x' }] }]);
+  assert.notStrictEqual(a.hash, c.hash);
+});
+
+test('context lists deleted files apart from changed files', () => {
+  const dir = scratchRepo();
+  try {
+    execFileSync('git', ['rm', '-q', 'a.js'], { cwd: dir });
+    execFileSync('git', ['commit', '-q', '-m', 'drop a'], { cwd: dir });
+    const ctx = JSON.parse(execFileSync(process.execPath, [SCRIPT, 'context', '--base=main'], { cwd: dir, encoding: 'utf8' }));
+    assert.deepStrictEqual(ctx.changedFiles, ['b.js']);
+    assert.deepStrictEqual(ctx.deletedFiles, ['a.js']);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('context resolves base and lists only branch changes', () => {
   const dir = scratchRepo();
   try {
@@ -116,10 +147,20 @@ test('flow writes a standalone flow and leaves another branch alone', () => {
     assert.strictEqual(flow.git.branch, 'feature');
     assert.strictEqual(flow.reviewResult.approved, true);
 
-    flow.git.branch = 'someone-else';
+    // A standalone leftover from another branch is replaced, not inherited.
+    flow.git.branch = 'old-branch';
     fs.writeFileSync(first.file, JSON.stringify(flow));
-    const second = run({ reviewResult: { approved: false } });
-    assert.strictEqual(second.written, false);
+    const replaced = run({ reviewResult: { approved: false } });
+    assert.strictEqual(replaced.written, true);
+    const fresh = JSON.parse(fs.readFileSync(first.file, 'utf8'));
+    assert.strictEqual(fresh.git.branch, 'feature');
+    assert.strictEqual(fresh.git.baseBranch, undefined);
+    assert.strictEqual(fresh.reviewResult.approved, false);
+
+    // A /next-task flow for another branch is left alone.
+    fs.writeFileSync(first.file, JSON.stringify({ task: { id: 'T-7' }, git: { branch: 'someone-else' }, reviewResult: { approved: true } }));
+    const kept = run({ reviewResult: { approved: false } });
+    assert.strictEqual(kept.written, false);
     assert.strictEqual(JSON.parse(fs.readFileSync(first.file, 'utf8')).reviewResult.approved, true);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

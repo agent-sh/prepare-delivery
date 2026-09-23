@@ -74,7 +74,7 @@ Save the reviewers' results as one JSON array (`[{"pass": "security", "findings"
 node <plugin>/scripts/delivery.js aggregate <results.json>
 ```
 
-It dedupes, sorts by severity, and enforces the contract: a false-positive flag without a reason stays open, and when more than half of 10 or more findings are flagged it sets `blocked`. That cap exists because a reviewer that read hostile code can be talked into dismissing everything, which would zero the open count and auto-approve. It also prints `openCount`, `totals` and a `hash` of the open findings.
+It dedupes, sorts by severity, and enforces the contract: a false-positive flag without a reason stays open, and when more than half of 10 or more findings are flagged it sets `blocked`. That cap exists because a reviewer that read hostile code can be talked into dismissing everything, which would zero the open count and auto-approve. It also prints `openCount`, `totals` and a `hash` of the open findings keyed on pass, file and severity, so a finding that comes back reworded or on a shifted line still counts as the same.
 
 `blocked`: ask the user whether to treat the flagged findings as open (re-run `aggregate --strip-false-positives` on the same results and continue), accept the reviewers' flags, or stop. Without AskUserQuestion, or unattended, treat them as open.
 

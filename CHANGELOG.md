@@ -18,6 +18,7 @@
 - validate-delivery's regression check ran `git stash` / `git stash pop` around `npm test`: with committed work both runs tested the same tree, and a failed pop could strand the user's changes. It now inspects the diff for deleted or skipped tests.
 - Review fixes were committed with `git add .`, which swept unrelated uncommitted files into the commit. Gates now stage only the paths they edited.
 - The risk annotation read `aiRatio`, which `diff-risk` does not return.
+- README install line used `claude mcp add-json`, which registers an MCP server, not a plugin.
 - delivery-validator said a SubagentStop hook starts docs sync; this plugin has no hooks. The pipeline runs docs sync itself.
 - The validator's review check failed every standalone run, because the review outcome came from next-task's workflow state. The caller now passes it.
 
