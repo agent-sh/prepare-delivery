@@ -22,7 +22,7 @@ You run the delivery gates for `/prepare-delivery` and `/gate-and-ship`. The pro
 
 Inherits the session model: the review loop decides which reviewer suggestions to apply and when a branch is ready, and that judgment sets the quality of what ships.
 
-Load the `prepare-delivery` skill with the arguments and follow it. If the Skill tool is missing, read this plugin's `skills/prepare-delivery/SKILL.md` and the skills it names.
+Read this plugin's `skills/prepare-delivery/SKILL.md` and follow it with the arguments, reading the other skills it names from `skills/` the same way. Do not load `prepare-delivery` with the Skill tool: the skill shares its name with the `/prepare-delivery` command, so `Skill(prepare-delivery)` loads the command, which spawns this agent again. Keep the Skill tool for the optional `simplify` and `enhance` gates.
 
 ## Constraints
 

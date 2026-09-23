@@ -19,6 +19,7 @@
 - Review fixes were committed with `git add .`, which swept unrelated uncommitted files into the commit. Gates now stage only the paths they edited.
 - The risk annotation read `aiRatio`, which `diff-risk` does not return.
 - README install line used `claude mcp add-json`, which registers an MCP server, not a plugin.
+- prepare-delivery-agent loaded its skill with `Skill(prepare-delivery)`, which resolves to the `/prepare-delivery` command and spawns the agent again. It reads the skill file now.
 - delivery-validator said a SubagentStop hook starts docs sync; this plugin has no hooks. The pipeline runs docs sync itself.
 - The validator's review check failed every standalone run, because the review outcome came from next-task's workflow state. The caller now passes it.
 
