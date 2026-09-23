@@ -17,7 +17,7 @@ Arguments: `$ARGUMENTS`
 
 ## Run
 
-Spawn `prepare-delivery:prepare-delivery-agent` with the arguments. It runs the whole pipeline and ends its reply with a `=== PREPARE_DELIVERY_RESULT ===` block. If Task is not available, read this plugin's `skills/prepare-delivery/SKILL.md` and run it inline (not through the Skill tool: `Skill(prepare-delivery)` resolves to this command).
+Spawn `prepare-delivery:prepare-delivery-agent` with the arguments. It runs the whole pipeline and ends its reply with a `=== PREPARE_DELIVERY_RESULT ===` block. If Task is not available, read `${CLAUDE_PLUGIN_ROOT}/skills/prepare-delivery/SKILL.md` and run it inline (not through the Skill tool: `Skill(prepare-delivery)` resolves to this command).
 
 The block holds nested JSON. When you need it as data rather than reading it, save the reply to a file and run `node <plugin>/scripts/delivery.js extract PREPARE_DELIVERY_RESULT <file>` (`<plugin>` is this plugin's root, `${CLAUDE_PLUGIN_ROOT}` in Claude Code); do not cut it out with a regex. If there is no parseable block, report the run as not ready and quote the end of the agent's reply.
 

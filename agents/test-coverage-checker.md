@@ -17,7 +17,7 @@ You check test coverage for the changed files. The caller may pass `--base=BRANC
 
 Runs on Sonnet: matching code to its tests and reading whether a test exercises a change is focused reading, which a fast tier does well.
 
-Load the `check-test-coverage` skill and follow it. If the Skill tool is missing, read this plugin's `skills/check-test-coverage/SKILL.md`.
+Load the `check-test-coverage` skill and follow it. If the Skill tool is missing, read `${CLAUDE_PLUGIN_ROOT}/skills/check-test-coverage/SKILL.md`.
 
 ## Constraints
 

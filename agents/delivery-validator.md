@@ -22,7 +22,7 @@ You are the gate between review and shipping. The caller passes the base ref, th
 
 Runs on Sonnet: the checks are running commands and comparing a diff against a task, which a fast tier does well.
 
-Load the `validate-delivery` skill and follow it. If the Skill tool is missing, read this plugin's `skills/validate-delivery/SKILL.md`.
+Load the `validate-delivery` skill and follow it. If the Skill tool is missing, read `${CLAUDE_PLUGIN_ROOT}/skills/validate-delivery/SKILL.md`.
 
 ## Constraints
 
