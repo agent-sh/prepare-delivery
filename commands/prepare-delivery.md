@@ -2,98 +2,39 @@
 description: "Run pre-ship quality gates - deslop, simplify, agnix, enhance, review loop, delivery validation, and docs sync. Does not ship."
 codex-description: 'Use when user asks to "prepare delivery", "run quality gates", "review code", "run pre-gates", "deslop and review", "validate before shipping", or has finished implementation and wants quality checks before shipping.'
 argument-hint: "[--base=BRANCH] [--skip-review] [--skip-docs]"
-allowed-tools: Task, Read
+allowed-tools: Task, Skill, Read, Edit, Write, Glob, Grep, Bash(git:*), Bash(node:*), Bash(npm:*), Bash(agnix:*), AskUserQuestion
 ---
 
-# /prepare-delivery - Pre-Ship Quality Gates
+# /prepare-delivery
 
-Run all quality gates on your implementation before shipping.
-Does NOT ship - use `/gate-and-ship` to prepare + ship, or run `/ship` separately after.
+Run the quality gates on the current branch and report whether it is ready to ship. Nothing is pushed and no PR is opened; `/ship` or `/gate-and-ship` does that.
 
-## Arguments
+Arguments: `$ARGUMENTS`
 
-- `--base=BRANCH`: Override the base branch (default: auto-detect or `main`)
-- `--skip-review`: Skip the review loop
-- `--skip-docs`: Skip docs sync
+- `--base=BRANCH`: base branch. Default: the remote default branch, else `main`.
+- `--skip-review`: skip the review loop.
+- `--skip-docs`: skip docs sync.
 
-## Execution
+## Run
 
-### Phase 1: Spawn Prepare Delivery Agent
+Spawn `prepare-delivery:prepare-delivery-agent` with the arguments. It runs the whole pipeline and ends its reply with a `=== PREPARE_DELIVERY_RESULT ===` block. If Task is not available, read `${CLAUDE_PLUGIN_ROOT}/skills/prepare-delivery/SKILL.md` and run it inline (not through the Skill tool: `Skill(prepare-delivery)` resolves to this command).
 
-```javascript
-const args = '$ARGUMENTS'.split(' ').filter(Boolean);
-const argsStr = args.join(' ');
+The block holds nested JSON. When you need it as data rather than reading it, save the reply to a file and run `node <plugin>/scripts/delivery.js extract PREPARE_DELIVERY_RESULT <file>` (`<plugin>` is this plugin's root, `${CLAUDE_PLUGIN_ROOT}` in Claude Code); do not cut it out with a regex. If there is no parseable block, report the run as not ready and quote the end of the agent's reply.
 
-// Pre-fetch repo-intel context for the agent
-let repoIntelContext = '';
-try {
-  const { binary } = require('@agentsys/lib');
-  const fs = require('fs');
-  const path = require('path');
-  const cwd = process.cwd();
-  const stateDir = ['.claude', '.opencode', '.codex'].find(d => fs.existsSync(path.join(cwd, d))) || '.claude';
-  const mapFile = path.join(cwd, stateDir, 'repo-intel.json');
-
-  if (fs.existsSync(mapFile)) {
-    const parts = [];
-    try {
-      const testGaps = JSON.parse(binary.runAnalyzer(['repo-intel', 'query', 'test-gaps', '--top', '20', '--map-file', mapFile, cwd]));
-      if (testGaps?.length) parts.push('Test gaps: ' + testGaps.map(f => f.path).join(', '));
-    } catch (e) {}
-    try {
-      const aiFiles = JSON.parse(binary.runAnalyzer(['repo-intel', 'query', 'recent-ai', '--top', '30', '--map-file', mapFile, cwd]));
-      if (aiFiles?.length) parts.push('AI-written files: ' + aiFiles.map(f => f.path).join(', '));
-    } catch (e) {}
-
-    if (parts.length > 0) {
-      repoIntelContext = '\n\nRepo-intel context:\n' + parts.join('\n');
-    }
-  }
-} catch (e) { /* repo-intel unavailable */ }
-
-const result = await Task({
-  subagent_type: "prepare-delivery:prepare-delivery-agent",
-  prompt: `Run pre-ship quality gate pipeline.
-Arguments: ${argsStr}
-${repoIntelContext}
-
-Return structured results between === PREPARE_DELIVERY_RESULT === markers.`
-});
-```
-
-### Phase 2: Parse Agent Results
-
-```javascript
-function parseResult(output) {
-  const match = output.match(/=== PREPARE_DELIVERY_RESULT ===[\s\S]*?({[\s\S]*?})[\s\S]*?=== END_RESULT ===/);
-  return match ? JSON.parse(match[1]) : { approved: false, error: 'No structured result' };
-}
-
-const delivery = parseResult(result);
-```
-
-### Phase 3: Present Results
+## Report
 
 ```markdown
 ## Prepare Delivery Report
 
 | Phase | Status |
 |-------|--------|
-| Pre-review gates | ${delivery.phases?.preReviewGates?.passed ? '[OK]' : '[FAIL]'} |
-| Config lint | ${delivery.phases?.configLint?.ran ? '[OK]' : 'skipped'} |
-| Review loop | ${delivery.phases?.reviewLoop?.approved ? '[OK]' : delivery.phases?.reviewLoop?.skipped ? 'skipped' : '[FAIL]'} |
-| Delivery validation | ${delivery.phases?.deliveryValidation?.approved ? '[OK]' : '[FAIL]'} |
-| Docs sync | ${delivery.phases?.docsSync?.updated ? '[OK]' : delivery.phases?.docsSync?.skipped ? 'skipped' : '[FAIL]'} |
+| Pre-review gates | [OK] or [FAIL] |
+| Config lint | [OK], [WARN] or skipped |
+| Review loop | [OK], [FAIL], blocked or skipped |
+| Delivery validation | [OK] or [FAIL] |
+| Docs sync | [OK], [FAIL] or skipped |
 
-**Status**: ${delivery.readyToShip ? '[OK] Ready to ship' : '[FAIL] Not ready'}
-```
-
-If ready to ship:
-```
-Run /ship to create PR and merge, or /gate-and-ship to prepare + ship in one step.
+**Status**: [OK] Ready to ship | [FAIL] Not ready
 ```
 
-If not ready:
-```
-Fix the reported issues and run /prepare-delivery again.
-```
+Under the table, list what each gate changed (commits made) and, when not ready, the fix instructions from the result. End with the next step: `/ship` (or `/gate-and-ship`) when ready, otherwise fix and run `/prepare-delivery` again.

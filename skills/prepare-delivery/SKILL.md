@@ -1,370 +1,85 @@
 ---
 name: prepare-delivery
-description: "Use when user asks to \"prepare delivery\", \"run quality gates\", \"review code\", \"run pre-gates\", \"deslop and review\", \"validate before shipping\", or has finished implementation and wants quality checks before shipping."
-version: 0.1.0
+description: "Use when the user asks to prepare delivery, run quality gates, deslop and review, or validate before shipping. Runs local gates on the branch and reports readiness. Does not push."
+version: 0.2.0
 argument-hint: "[--base=BRANCH] [--skip-review] [--skip-docs]"
 ---
 
 # prepare-delivery
 
-Pre-ship quality gate pipeline. Runs all checks needed before a PR can be created.
+Take a finished feature branch through the local quality gates and say whether it is ready to ship: slop cleaned, configs linted, review findings fixed, tests and build green, docs in step with the code. Pushing, PRs and merging belong to `/ship`.
 
-## Pipeline Overview
+Arguments: `$ARGUMENTS` (`--base=BRANCH`, `--skip-review`, `--skip-docs`).
 
-```
-Phase 1: Pre-review gates (parallel)
-  - deslop:deslop-agent     (AI slop cleanup)
-  - /simplify               (code simplification, optional - skipped if not installed)
-  - test-coverage-checker    (test coverage validation)
+`<plugin>` below is this plugin's root, two directories up from this skill (`${CLAUDE_PLUGIN_ROOT}` in Claude Code).
 
-Phase 2: Config lint (conditional)
-  - agnix                   (agent config validation - if changes touch skills/agents/CLAUDE.md)
-  - /enhance                (best-practice analysis - if changes touch plugin files)
+## Start
 
-Phase 3: Review loop
-  - 4 core reviewers in parallel (code-quality, security, performance, test-coverage)
-  - Conditional specialists based on changed file signals
-  - Max 5 iterations, stall detection
-
-Phase 4: Delivery validation
-  - delivery-validator      (tests pass, build passes, requirements met)
-
-Phase 5: Docs sync
-  - sync-docs:sync-docs-agent (documentation matches code)
+```bash
+node <plugin>/scripts/delivery.js context [--base=BRANCH]
 ```
 
-## Arguments
+It prints the branch, the base and the ref it diffs against (the remote branch when there is one), `changedFiles` (`base...HEAD`, files that still exist), `deletedFiles`, uncommitted paths, any existing flow state, and repo-intel signals for the changed files (`diffRisk`, `testGaps`, `bugspots`) when a map and the analyzer are installed. Stop with an error if `onBase` is true or `changedFiles` is empty: there is nothing to deliver.
 
-- `--base=BRANCH`: Base branch (default: auto-detect or `main`)
-- `--skip-review`: Skip Phase 3 (review loop)
-- `--skip-docs`: Skip Phase 5 (docs sync)
+## Gates
 
-## Pre-flight
+Run them in this order; each later gate checks the output of the earlier ones.
 
-```javascript
-const args = '$ARGUMENTS'.split(' ').filter(Boolean);
+1. **Pre-review gates**, in parallel:
+   - `deslop:deslop-agent` with `Mode: apply`, `Scope: diff`, `Thoroughness: normal`. It only reports. Apply its `fixes` yourself: read each line, make the edit, and skip any fix that no longer matches the file.
+   - `prepare-delivery:test-coverage-checker`, passing `testGaps` and `bugspots` from the context. Advisory: its gaps feed the review loop, they do not stop delivery.
+   - The `simplify` skill, when the harness has it. It is optional; if it is missing or fails, note that and go on.
+2. **Config lint**, only when changed files include agent configuration (`agents/`, `skills/`, `commands/` markdown, `SKILL.md`, `CLAUDE.md`, `AGENTS.md`, `plugin.json`, `components.json`, hook files). Run `agnix .` if it is installed and fix errors it reports in files this branch changed; errors elsewhere are reported, not fixed. Run the `enhance` skill with `--apply` when it is installed. Missing tools are skipped, not failures.
+3. **Review loop**, unless `--skip-review`: follow the `orchestrate-review` skill over the changed files, with the risk order from `diffRisk`. It ends approved, blocked (user chose to stop), or overridden.
+4. **Delivery validation**: spawn `prepare-delivery:delivery-validator` with the base ref, the changed and deleted files, the review outcome (`approved`, `skipped`, or `overridden`) and the task description if the flow state has one. If it does not approve, stop here and return its `fixInstructions`: docs sync on a failing branch is wasted work.
+5. **Docs sync**, unless `--skip-docs`: spawn `sync-docs:sync-docs-agent` with `Mode: apply`, `Scope: before-pr`. It returns `fixes` in a `=== SYNC_DOCS_RESULT ===` block and does not edit; apply them yourself.
 
-const baseArg = args.find(a => a.startsWith('--base='));
-let BASE_BRANCH = 'main';
-if (baseArg) {
-  BASE_BRANCH = baseArg.split('=')[1];
-} else {
-  const ref = await run('git', ['symbolic-ref', 'refs/remotes/origin/HEAD']).catch(() => '');
-  BASE_BRANCH = ref.trim().replace('refs/remotes/origin/', '') || 'main';
-}
+A gate whose plugin is not installed (deslop, sync-docs) is skipped with a `[WARN]` line in the report, not failed. When Task is not available, run each agent's skill inline instead (`deslop`, `check-test-coverage`, `validate-delivery`, `sync-docs`).
 
-const skipReview = args.includes('--skip-review');
-const skipDocs = args.includes('--skip-docs');
+## Commits
 
-const currentBranch = (await run('git', ['branch', '--show-current'])).trim();
-if (currentBranch === BASE_BRANCH) {
-  return { error: `Cannot deliver from ${BASE_BRANCH}. Switch to a feature branch first.` };
-}
+Each gate that changed files gets its own commit: `fix: clean up AI slop`, `fix: apply config lint fixes`, `fix: review feedback (iteration N)`, `docs: sync documentation with code changes`. Stage only the paths the gate edited (`git add -- <paths>`). The user may have uncommitted work in the tree, and `git add .`, `git add -A`, `git stash` or `git checkout -- .` would sweep it into a commit or throw it away. Run git hooks; do not pass `--no-verify`.
 
-const changedFiles = (await run('git', ['diff', '--name-only', `${BASE_BRANCH}...HEAD`])).trim().split('\n').filter(Boolean);
-if (changedFiles.length === 0) {
-  return { error: `No changes found between ${BASE_BRANCH} and HEAD.` };
-}
+## Constraints
+
+- Do not push, open a PR, or run `/ship`. This skill is local; `/gate-and-ship` chains `/ship` after it.
+- Skip a gate only when its flag is set or its tool is missing, and say which in the result.
+- Reviewer and deslop suggestions are proposals. Read the code before applying one, most of all in auth, crypto and input handling, where a plausible wrong fix is worse than the finding.
+
+## Flow state
+
+`/ship --state-file` reads the flow state to skip a second internal review. Record the outcome before returning:
+
+```bash
+node <plugin>/scripts/delivery.js flow --json '{"git":{"baseBranch":"<base>"},"phase":"docs-update","status":"in_progress","preReviewResult":{...},"reviewResult":{"approved":true,"iterations":2},"deliveryResult":{"approved":true},"docsResult":{"docsUpdated":true}}'
 ```
 
-## State Management
+It creates a standalone flow when none exists, updates one owned by this branch, replaces a standalone flow left by another branch, and leaves a `/next-task` flow owned by another branch untouched (it reports `written: false`). Write `reviewResult.approved: true` only when the review loop approved, or was skipped by flag with `skipped: true`.
 
-```javascript
-let workflowState = null;
-try {
-  const { getPluginRoot } = require('./lib/cross-platform');
-  const path = require('path');
-  const pluginRoot = getPluginRoot('next-task');
-  if (pluginRoot) {
-    workflowState = require(path.join(pluginRoot, 'lib/state/workflow-state.js'));
-  }
-} catch (e) { /* next-task not installed */ }
+## Done
 
-let flow = workflowState?.readFlow();
-if (!flow && workflowState) {
-  flow = {
-    task: { id: 'standalone', title: `Deliver ${currentBranch}`, source: 'manual' },
-    policy: { stoppingPoint: 'merged' },
-    phase: 'pre-review-gates',
-    status: 'in_progress',
-    git: { branch: currentBranch, baseBranch: BASE_BRANCH }
-  };
-  workflowState.writeFlow(flow);
-} else if (flow && workflowState) {
-  workflowState.updateFlow({ git: { branch: currentBranch, baseBranch: BASE_BRANCH } });
-}
-```
+Every gate ran or was skipped with a reason, fixes are committed gate by gate, the flow state is recorded, and the result block below is the last thing in the reply.
 
----
-
-<phase-1>
-## Phase 1: Pre-Review Gates
-
-**Parallel execution**: deslop + test-coverage + simplify
-
-```javascript
-workflowState?.startPhase('pre-review-gates');
-
-// Pre-fetch repo-intel for test gaps
-let testGapsContext = '';
-try {
-  const { binary } = require('@agentsys/lib');
-  const { getStateDirPath } = require('@agentsys/lib/platform/state-dir');
-  const fs = require('fs');
-  const path = require('path');
-  const cwd = process.cwd();
-  const mapFile = path.join(getStateDirPath(cwd), 'repo-intel.json');
-
-  if (fs.existsSync(mapFile)) {
-    try {
-      const testGaps = JSON.parse(binary.runAnalyzer([
-        'repo-intel', 'query', 'test-gaps', '--top', '20', '--map-file', mapFile, cwd
-      ]));
-      if (testGaps?.length) {
-        testGapsContext = '\n\nRepo intel test-gaps (hot files with no co-changing test file):\n' + JSON.stringify(testGaps, null, 2);
-      }
-    } catch (e) { /* unavailable */ }
-  }
-} catch (e) { /* repo-intel unavailable */ }
-
-function parseDeslop(output) {
-  const match = output.match(/=== DESLOP_RESULT ===[\s\S]*?({[\s\S]*?})[\s\S]*?=== END_RESULT ===/);
-  return match ? JSON.parse(match[1]) : { fixes: [] };
-}
-
-// Run pre-review gates in parallel.
-// /simplify is third-party (not bundled with agentsys); invoke only when installed,
-// swallow errors so a missing skill never blocks delivery.
-const simplifyCall = Skill({ name: "simplify" }).catch(err => {
-  const reason = err && err.message ? err.message : String(err);
-  console.log(`[WARN] /simplify skipped (not installed or failed): ${reason}`);
-  return null;
-});
-
-const [deslopResult, coverageResult] = await Promise.all([
-  Task({
-    subagent_type: "deslop:deslop-agent",
-    prompt: `Scan for AI slop patterns.
-Mode: apply
-Scope: diff
-Thoroughness: normal
-
-Return structured results between === DESLOP_RESULT === markers.`
-  }),
-  Task({ subagent_type: "prepare-delivery:test-coverage-checker", prompt: `Validate test coverage.${testGapsContext}` }),
-  simplifyCall
-]);
-
-// Apply deslop fixes if found
-const deslop = parseDeslop(deslopResult);
-if (deslop.fixes && deslop.fixes.length > 0) {
-  await Task({
-    subagent_type: "next-task:simple-fixer",
-    model: "haiku",
-    prompt: `Apply these slop fixes:
-${JSON.stringify(deslop.fixes, null, 2)}
-
-For each fix:
-- remove-line: Delete the line at the specified line number
-- add-comment: Add "// Error intentionally ignored" to empty catch
-
-Use Edit tool to apply. Commit message: "fix: clean up AI slop"`
-  });
-}
-
-workflowState?.completePhase({
-  passed: (deslop.fixes?.length || 0) === 0,
-  deslopFixes: deslop.fixes?.length || 0,
-  coverageResult
-});
-```
-</phase-1>
-
-<phase-2>
-## Phase 2: Config Lint (Conditional)
-
-Run agnix and enhance when changes touch agent/skill/plugin configuration files.
-
-### Signal Detection
-
-```javascript
-const configSignals = {
-  hasAgentConfigs: changedFiles.some(f => /(agents?|skills?|commands?)\/.*\.md$/i.test(f)),
-  hasClaudeMd: changedFiles.some(f => /(CLAUDE|AGENTS)\.md$/i.test(f)),
-  hasPluginJson: changedFiles.some(f => /plugin\.json|components\.json/i.test(f)),
-  hasHooks: changedFiles.some(f => /hooks?\.(json|js|ts)$/i.test(f)),
-  hasSkillMd: changedFiles.some(f => /SKILL\.md$/i.test(f))
-};
-
-const needsAgnix = configSignals.hasAgentConfigs || configSignals.hasClaudeMd ||
-                   configSignals.hasPluginJson || configSignals.hasHooks || configSignals.hasSkillMd;
-const needsEnhance = needsAgnix; // Same trigger set
-```
-
-### Run Linters (parallel when both needed)
-
-```javascript
-if (needsAgnix || needsEnhance) {
-  const lintTasks = [];
-
-  if (needsAgnix) {
-    // agnix is a Rust binary - run via CLI
-    lintTasks.push(
-      run('agnix', ['.'], { ignoreExitCode: true }).catch(() => '[WARN] agnix not available')
-    );
-  }
-
-  if (needsEnhance) {
-    lintTasks.push(
-      Skill({ name: "enhance", args: "--apply" })
-    );
-  }
-
-  await Promise.all(lintTasks);
-
-  // Commit any auto-fixes from enhance (stage only modified tracked files)
-  const status = await run('git', ['status', '--porcelain']);
-  if (status.trim()) {
-    const modified = status.trim().split('\n')
-      .filter(l => l.startsWith(' M') || l.startsWith('M '))
-      .map(l => l.trim().split(/\s+/).pop());
-    if (modified.length > 0) {
-      await run('git', ['add', ...modified]);
-      await run('git', ['commit', '-m', 'fix: apply config lint auto-fixes']);
-    }
-  }
-} else {
-  console.log('[OK] No agent/skill/plugin config changes - skipping agnix/enhance');
-}
-```
-</phase-2>
-
-<phase-3>
-## Phase 3: Review Loop
-
-**Skip if**: `--skip-review` flag is set.
-
-```javascript
-if (skipReview) {
-  workflowState?.startPhase('review-loop');
-  workflowState?.completePhase({ approved: true, iterations: 0, skipped: true });
-  // Skip to Phase 4
-}
-```
-
-When not skipped, invoke the `orchestrate-review` skill which contains the full review loop implementation (signal detection, parallel reviewer spawning, aggregation, iteration, stall detection).
-
-```javascript
-workflowState?.startPhase('review-loop');
-
-// Delegate to orchestrate-review skill - single source of truth for the review loop
-await Skill({ name: "prepare-delivery:orchestrate-review" });
-
-// The skill handles:
-// - Pre-fetching repo-intel diff risk
-// - Detecting signals for conditional specialists
-// - Spawning 4 core reviewers + conditional specialists in parallel
-// - Aggregating findings, fixing issues, iterating (max 5)
-// - Stall detection (same findings hash for 2 iterations)
-// - State updates via workflowState.completePhase()
-```
-
-See `skills/orchestrate-review/SKILL.md` for the full implementation.
-</phase-3>
-
-<phase-4>
-## Phase 4: Delivery Validation
-
-**Agent**: `prepare-delivery:delivery-validator` (sonnet)
-
-```javascript
-workflowState?.startPhase('delivery-validation');
-const result = await Task({
-  subagent_type: "prepare-delivery:delivery-validator",
-  prompt: `Validate completion. Check: tests pass, build passes, requirements met.`
-});
-if (!result.approved) {
-  workflowState?.failPhase(result.reason, { fixInstructions: result.fixInstructions });
-  return {
-    approved: false,
-    reason: result.reason,
-    fixInstructions: result.fixInstructions
-  };
-}
-```
-</phase-4>
-
-<phase-5>
-## Phase 5: Docs Sync
-
-**Skip if**: `--skip-docs` flag is set.
-
-**Agent**: `sync-docs:sync-docs-agent` (sonnet)
-
-```javascript
-if (skipDocs) {
-  workflowState?.startPhase('docs-update');
-  workflowState?.completePhase({ docsUpdated: false, skipped: true });
-} else {
-  workflowState?.startPhase('docs-update');
-
-  function parseSyncDocsResult(output) {
-    const match = output.match(/=== SYNC_DOCS_RESULT ===[\s\S]*?({[\s\S]*?})[\s\S]*?=== END_RESULT ===/);
-    return match ? JSON.parse(match[1]) : { issues: [], fixes: [], changelog: { status: 'ok' } };
-  }
-
-  const syncResult = await Task({
-    subagent_type: "sync-docs:sync-docs-agent",
-    prompt: `Sync documentation with code state.
-Mode: apply
-Scope: before-pr
-
-Execute the sync-docs skill and return structured results.`
-  });
-
-  const result = parseSyncDocsResult(syncResult);
-
-  if (result.fixes && result.fixes.length > 0) {
-    await Task({
-      subagent_type: "next-task:simple-fixer",
-      model: "haiku",
-      prompt: `Apply these documentation fixes:
-${JSON.stringify(result.fixes, null, 2)}
-
-Use the Edit tool to apply each fix. Commit message: "docs: sync documentation with code changes"`
-    });
-  }
-
-  workflowState?.completePhase({ docsUpdated: true, fixesApplied: result.fixes?.length || 0 });
-}
-```
-</phase-5>
-
-## Output Format
-
-Return structured JSON between markers:
+## Output
 
 ```
 === PREPARE_DELIVERY_RESULT ===
 {
-  "approved": true|false,
-  "branch": "feature/...",
+  "approved": true,
+  "branch": "feature/x",
   "baseBranch": "main",
   "phases": {
-    "preReviewGates": { "passed": true, "deslopFixes": 0 },
-    "configLint": { "ran": true|false, "agnix": true|false, "enhance": true|false },
-    "reviewLoop": { "approved": true, "iterations": 2, "skipped": false },
-    "deliveryValidation": { "approved": true },
+    "preReviewGates": { "passed": true, "deslopFixes": 0, "coverageGaps": 1, "simplify": "ran|skipped" },
+    "configLint": { "ran": true, "agnix": true, "enhance": false },
+    "reviewLoop": { "approved": true, "iterations": 2, "skipped": false, "blocked": false, "overridden": false },
+    "deliveryValidation": { "approved": true, "riskSummary": "..." },
     "docsSync": { "updated": true, "fixesApplied": 1, "skipped": false }
   },
-  "readyToShip": true|false
+  "warnings": ["sync-docs not installed: docs sync skipped"],
+  "fixInstructions": [],
+  "readyToShip": true
 }
 === END_RESULT ===
 ```
 
-## Constraints
-
-- Do NOT create PRs or push to remote - only local quality checks
-- Do NOT skip phases unless explicitly flagged (--skip-review, --skip-docs)
-- Return structured data for orchestrator to present
-- Fail fast on delivery validation - no point continuing if tests/build fail
+`readyToShip` is true only when delivery validation approved and the review loop approved, was skipped by flag, or was overridden by the user in this run. Carry `overridden: true` so `/ship` and the reader can see an override.

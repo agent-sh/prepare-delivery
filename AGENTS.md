@@ -4,7 +4,7 @@
 
 ## Agents
 
-- **prepare-delivery-agent** (sonnet) - orchestrates the full pre-ship pipeline via skill
+- **prepare-delivery-agent** (inherits the session model) - orchestrates the full pre-ship pipeline via skill
 - **delivery-validator** (sonnet) - autonomous pass/fail validation after review approval
 - **test-coverage-checker** (sonnet) - validates test quality for changed files (advisory)
 
@@ -29,7 +29,8 @@
 6. **Use single dash for em-dashes** - In prose, use ` - ` (single dash with spaces), never ` -- `.
 7. **Report script failures before manual fallback** - Never silently bypass broken tooling.
 8. **Token efficiency** - Save tokens over decorations.
-9. **Reviewer contract sync** - The REVIEWER CONTRACT block in `skills/orchestrate-review/SKILL.md` is duplicated in `audit-project/commands/audit-project-agents.md`. When editing either block, update both. No tool enforces this today; a CI check is a known follow-up.
+9. **Deterministic logic lives in `scripts/delivery.js`** - Parsing result blocks, review aggregation and the false-positive rules, flow state. Change it there, with a test, not in skill prose.
+10. **Reviewer contract sync** - The REVIEWER CONTRACT block in `skills/orchestrate-review/SKILL.md` is duplicated in `audit-project/commands/audit-project-agents.md`. When editing either block, update both. No tool enforces this today; a CI check is a known follow-up.
 
 ## Model Selection
 
@@ -53,7 +54,6 @@
 |-------|--------|-------------|
 | Pre-review gates | deslop | `deslop:deslop-agent` |
 | Pre-review gates | (own) | `prepare-delivery:test-coverage-checker` |
-| Pre-review gates | next-task | `next-task:simple-fixer` |
 | Pre-review gates | (third-party, optional) | `/simplify` skill - invoked when installed; failures are swallowed |
 | Config lint | agnix | `agnix` CLI (conditional) |
 | Config lint | enhance | `/enhance` skill (conditional) |
