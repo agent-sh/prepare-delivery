@@ -1,6 +1,6 @@
 {
   "name": "prepare-delivery",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pre-ship quality gates - deslop, simplify, review loop, delivery validation, docs sync",
   "author": {
     "name": "Avi Fenesh",

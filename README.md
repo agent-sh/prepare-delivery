@@ -27,12 +27,15 @@ claude mcp add-json prepare-delivery '{"type":"url","url":"https://github.com/ag
 
 | Phase | What runs | Mode |
 |-------|-----------|------|
-| 1 | deslop + simplify + test-coverage-checker | Parallel |
-| | _Deslop fixes are applied via next-task:simple-fixer when found_ | |
-| 2 | agnix + enhance | Conditional (when changes touch agent/skill configs) |
-| 3 | 4 core reviewers + conditional specialists | Iterative (max 5) |
-| 4 | delivery-validator (tests, build, requirements) | Blocking |
-| 5 | sync-docs agent | Sequential |
+| 1 | deslop + simplify + test-coverage-checker | Parallel; deslop fixes are applied by the pipeline itself |
+| 2 | agnix + enhance | Only when changes touch agent/skill/plugin configs |
+| 3 | 4 core reviewers + signal-based specialists | Iterative, max 5 rounds, stops on a stall |
+| 4 | delivery-validator (tests, build, requirements, review status) | Blocking |
+| 5 | sync-docs agent | Fixes applied by the pipeline |
+
+Each gate commits only the files it edited, so uncommitted work in your tree is left alone. A missing optional plugin (deslop, sync-docs, enhance, agnix, simplify) skips its gate with a warning.
+
+`scripts/delivery.js` does the deterministic parts: branch context and repo-intel signals (`context`), parsing result blocks (`extract`), the review aggregation and its false-positive rules (`aggregate`), and the flow state `/ship --state-file` reads (`flow`).
 
 ## Composability
 
@@ -49,7 +52,7 @@ claude mcp add-json prepare-delivery '{"type":"url","url":"https://github.com/ag
 
 | Agent | Model | Purpose |
 |-------|-------|---------|
-| prepare-delivery-agent | sonnet | Orchestrates the full pipeline via skill |
+| prepare-delivery-agent | inherits | Orchestrates the full pipeline via skill |
 | delivery-validator | sonnet | Autonomous pass/fail validation |
 | test-coverage-checker | sonnet | Test quality validation (advisory) |
 
@@ -68,8 +71,7 @@ claude mcp add-json prepare-delivery '{"type":"url","url":"https://github.com/ag
 |-------|--------|-------------|
 | Pre-review gates | [deslop](https://github.com/agent-sh/deslop) | deslop:deslop-agent |
 | Pre-review gates | (own) | prepare-delivery:test-coverage-checker |
-| Pre-review gates | [next-task](https://github.com/agent-sh/next-task) | next-task:simple-fixer |
-| Pre-review gates | (built-in) | /simplify skill |
+| Pre-review gates | (optional) | simplify skill, when the harness has it |
 | Config lint | [agnix](https://github.com/agent-sh/agnix) | agnix CLI (conditional) |
 | Config lint | [enhance](https://github.com/agent-sh/enhance) | /enhance skill (conditional) |
 | Review loop | (general-purpose) | 4 core + conditional reviewer agents |
