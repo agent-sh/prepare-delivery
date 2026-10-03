@@ -284,3 +284,34 @@ test('inferred linked state directory cannot redirect flow outside the workspace
     fs.rmSync(external, { recursive: true, force: true });
   }
 });
+
+test('flow recovers dead-owner locks but never expires a live owner', () => {
+  const dir = scratchRepo();
+  const state = path.join(dir, '.state');
+  const previous = process.env.AI_STATE_DIR;
+  try {
+    process.env.AI_STATE_DIR = state;
+    fs.mkdirSync(state);
+    const lock = path.join(state, '.flow.json.lock');
+    const deadPid = Number(execFileSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' }));
+    assert.throws(() => process.kill(deadPid, 0), { code: 'ESRCH' });
+    fs.writeFileSync(lock, JSON.stringify({ pid: deadPid, createdAt: Date.now() }));
+    assert.strictEqual(updateFlow(dir, { phase: 'review' }).written, true);
+    assert.strictEqual(fs.existsSync(lock), false);
+    const live = JSON.stringify({ pid: process.pid, createdAt: 1 });
+    fs.writeFileSync(lock, live);
+    fs.utimesSync(lock, new Date(0), new Date(0));
+    const result = updateFlow(dir, { phase: 'review' });
+    assert.strictEqual(result.written, false);
+    assert.strictEqual(result.retryable, true);
+    assert.strictEqual(fs.readFileSync(lock, 'utf8'), live);
+    fs.unlinkSync(lock);
+    fs.writeFileSync(lock, '');
+    fs.utimesSync(lock, new Date(0), new Date(0));
+    assert.strictEqual(updateFlow(dir, { phase: 'review' }).written, true);
+  } finally {
+    if (previous === undefined) delete process.env.AI_STATE_DIR;
+    else process.env.AI_STATE_DIR = previous;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

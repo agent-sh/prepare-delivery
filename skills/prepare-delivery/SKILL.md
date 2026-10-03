@@ -56,6 +56,11 @@ node <plugin>/scripts/delivery.js flow --json '{"git":{"baseBranch":"<base>"},"p
 
 It creates a standalone flow when none exists, updates one owned by this branch, replaces a standalone flow left by another branch, and leaves a `/next-task` flow owned by another branch untouched (it reports `written: false`). Write `reviewResult.approved: true` only when the review loop approved, or was skipped by flag with `skipped: true`.
 
+Read the `reason` when `written` is false. Unsafe paths or changed content are
+refused. An active writer returns `retryable: true`; retry after it finishes,
+without claiming that state was saved. Abandoned dead-PID locks are recovered
+automatically once. Known live owners are never expired by age.
+
 ## Done
 
 Every gate ran or was skipped with a reason, fixes are committed gate by gate, the flow state is recorded, and the result block below is the last thing in the reply.

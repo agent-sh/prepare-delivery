@@ -261,6 +261,41 @@ function merge(target, patch) {
 // Writes the fields /ship reads from --state-file (git.branch, git.baseBranch, reviewResult).
 // A /next-task flow owned by another branch is someone else's run and is left alone. A standalone
 // flow from another branch is this script's own leftover and is replaced.
+function acquireFlowLock(file) {
+  const create = () => {
+    const fd = fs.openSync(file, 'wx', 0o600);
+    try {
+      fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, createdAt: Date.now() }));
+      return fd;
+    } catch (error) {
+      fs.closeSync(fd);
+      fs.unlinkSync(file);
+      throw error;
+    }
+  };
+  try { return create(); }
+  catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    const before = fs.lstatSync(file);
+    if (!before.isFile() || before.nlink !== 1) throw error;
+    let owner;
+    try { owner = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* interrupted metadata write */ }
+    let stale = false;
+    if (Number.isSafeInteger(owner?.pid) && owner.pid > 0) {
+      try { process.kill(owner.pid, 0); }
+      catch (probeError) { stale = probeError.code === 'ESRCH'; }
+    } else {
+      // A process may die between exclusive creation and its metadata write.
+      // Give incomplete metadata a grace period; never expire a known live PID.
+      stale = Date.now() - before.mtimeMs > 60_000;
+    }
+    const after = fs.lstatSync(file);
+    if (!stale || !after.isFile() || after.nlink !== 1 || before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs) throw error;
+    fs.unlinkSync(file);
+    return create(); // one bounded recovery attempt, no wait/poll loop
+  }
+}
+
 function updateFlow(cwd, patch) {
   const branch = git(['branch', '--show-current'], cwd);
   let dir = stateDirPath(cwd);
@@ -276,8 +311,8 @@ function updateFlow(cwd, patch) {
   file = path.join(dir, 'flow.json');
   const lockFile = path.join(dir, '.flow.json.lock');
   let lock;
-  try { lock = fs.openSync(lockFile, 'wx', 0o600); }
-  catch (error) { return { written: false, file, reason: `cannot lock flow.json (${error.code})` }; }
+  try { lock = acquireFlowLock(lockFile); }
+  catch (error) { return { written: false, file, retryable: error.code === 'EEXIST', reason: `cannot lock flow.json (${error.code}); another writer may still be active` }; }
   try {
     let fd;
     let created = false;
@@ -346,8 +381,14 @@ function updateFlow(cwd, patch) {
       fs.closeSync(fd);
     }
   } finally {
-    fs.closeSync(lock);
-    fs.unlinkSync(lockFile);
+    try {
+      const held = fs.fstatSync(lock);
+      let current;
+      try { current = fs.lstatSync(lockFile); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+      if (current?.isFile() && current.dev === held.dev && current.ino === held.ino && current.nlink === 1) fs.unlinkSync(lockFile);
+    } finally {
+      fs.closeSync(lock);
+    }
   }
 }
 
