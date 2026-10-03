@@ -8,7 +8,10 @@
   the workspace. Serialize cooperating writers while preserving explicitly
   selected external state directories.
 - Add regression coverage for replaced paths, hard links, concurrent ownership
-  changes, and linked state directories.
+  changes, linked state directories, and competing stale-lock recovery.
+- Use unique writer intents so stale recovery never deletes a replacement lock.
+  Ignore dead owners, retain abandoned intents, and report active writers as
+  retryable. Legacy locks with unknown owners require manual removal.
 
 ## [0.2.0] - 2026-09-24
 

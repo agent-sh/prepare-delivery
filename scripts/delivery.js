@@ -262,37 +262,47 @@ function merge(target, patch) {
 // A /next-task flow owned by another branch is someone else's run and is left alone. A standalone
 // flow from another branch is this script's own leftover and is replaced.
 function acquireFlowLock(file) {
-  const create = () => {
-    const fd = fs.openSync(file, 'wx', 0o600);
-    try {
-      fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, createdAt: Date.now() }));
-      return fd;
-    } catch (error) {
-      fs.closeSync(fd);
-      fs.unlinkSync(file);
-      throw error;
-    }
+  const busy = () => { throw Object.assign(new Error('another flow writer may still be active'), { code: 'EEXIST' }); };
+  const alive = pid => {
+    if (!Number.isSafeInteger(pid) || pid <= 0) return true;
+    try { process.kill(pid, 0); return true; }
+    catch (error) { return error.code !== 'ESRCH'; }
   };
-  try { return create(); }
-  catch (error) {
-    if (error.code !== 'EEXIST') throw error;
-    const before = fs.lstatSync(file);
-    if (!before.isFile() || before.nlink !== 1) throw error;
-    let owner;
-    try { owner = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* interrupted metadata write */ }
-    let stale = false;
-    if (Number.isSafeInteger(owner?.pid) && owner.pid > 0) {
-      try { process.kill(owner.pid, 0); }
-      catch (probeError) { stale = probeError.code === 'ESRCH'; }
-    } else {
-      // A process may die between exclusive creation and its metadata write.
-      // Give incomplete metadata a grace period; never expire a known live PID.
-      stale = Date.now() - before.mtimeMs > 60_000;
+  // Announce before scanning. A later contender sees this intent; overlapping
+  // scans may both decline, but cannot both enter. Each writer removes only its
+  // unique intent. Dead intents are ignored, never reclaimed through a shared
+  // pathname whose replacement could belong to a new writer.
+  const intent = `${file}.${process.pid}.${crypto.randomBytes(16).toString('hex')}`;
+  const fd = fs.openSync(intent, 'wx', 0o600);
+  const release = () => {
+    try { fs.unlinkSync(intent); }
+    finally { fs.closeSync(fd); }
+  };
+  try {
+    // Older versions used a single metadata file. Read it through a descriptor
+    // and leave it alone. Unknown owners cannot safely be declared dead by age.
+    let legacy;
+    try { legacy = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0)); }
+    catch (error) { if (error.code !== 'ENOENT') busy(); }
+    if (legacy !== undefined) {
+      try {
+        const stat = fs.fstatSync(legacy);
+        if (!stat.isFile() || stat.nlink !== 1) busy();
+        let owner;
+        try { owner = JSON.parse(fs.readFileSync(legacy, 'utf8')); } catch { busy(); }
+        if (alive(owner?.pid)) busy();
+      } finally { fs.closeSync(legacy); }
     }
-    const after = fs.lstatSync(file);
-    if (!stale || !after.isFile() || after.nlink !== 1 || before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs) throw error;
-    fs.unlinkSync(file);
-    return create(); // one bounded recovery attempt, no wait/poll loop
+    const prefix = `${path.basename(file)}.`;
+    for (const name of fs.readdirSync(path.dirname(file))) {
+      if (!name.startsWith(prefix) || name === path.basename(intent)) continue;
+      const match = /^(\d+)\.[a-f0-9]{32}$/.exec(name.slice(prefix.length));
+      if (!match || alive(Number(match[1]))) busy();
+    }
+    return release;
+  } catch (error) {
+    release();
+    throw error;
   }
 }
 
@@ -381,14 +391,7 @@ function updateFlow(cwd, patch) {
       fs.closeSync(fd);
     }
   } finally {
-    try {
-      const held = fs.fstatSync(lock);
-      let current;
-      try { current = fs.lstatSync(lockFile); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-      if (current?.isFile() && current.dev === held.dev && current.ino === held.ino && current.nlink === 1) fs.unlinkSync(lockFile);
-    } finally {
-      fs.closeSync(lock);
-    }
+    lock();
   }
 }
 

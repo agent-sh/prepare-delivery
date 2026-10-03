@@ -58,8 +58,9 @@ It creates a standalone flow when none exists, updates one owned by this branch,
 
 Read the `reason` when `written` is false. Unsafe paths or changed content are
 refused. An active writer returns `retryable: true`; retry after it finishes,
-without claiming that state was saved. Abandoned dead-PID locks are recovered
-automatically once. Known live owners are never expired by age.
+without claiming that state was saved. Dead-PID writer intents are ignored
+without deleting them. Known live owners are never expired by age. An old shared
+lock with missing or invalid owner metadata needs manual inspection and removal.
 
 ## Done
 

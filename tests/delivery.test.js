@@ -6,6 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { Worker } = require('worker_threads');
 
 const { extractResult, aggregate, updateFlow } = require('../scripts/delivery.js');
 
@@ -297,7 +298,18 @@ test('flow recovers dead-owner locks but never expires a live owner', () => {
     assert.throws(() => process.kill(deadPid, 0), { code: 'ESRCH' });
     fs.writeFileSync(lock, JSON.stringify({ pid: deadPid, createdAt: Date.now() }));
     assert.strictEqual(updateFlow(dir, { phase: 'review' }).written, true);
-    assert.strictEqual(fs.existsSync(lock), false);
+    assert.strictEqual(fs.existsSync(lock), true);
+    const deadIntent = `${lock}.${deadPid}.${'a'.repeat(32)}`;
+    fs.writeFileSync(deadIntent, '');
+    assert.strictEqual(updateFlow(dir, { phase: 'validation' }).written, true);
+    assert.strictEqual(fs.readFileSync(deadIntent, 'utf8'), '');
+    const activeIntent = `${lock}.${process.pid}.${'b'.repeat(32)}`;
+    fs.writeFileSync(activeIntent, '');
+    fs.utimesSync(activeIntent, new Date(0), new Date(0));
+    const busy = updateFlow(dir, { phase: 'review' });
+    assert.strictEqual(busy.written, false);
+    assert.strictEqual(busy.retryable, true);
+    fs.unlinkSync(activeIntent);
     const live = JSON.stringify({ pid: process.pid, createdAt: 1 });
     fs.writeFileSync(lock, live);
     fs.utimesSync(lock, new Date(0), new Date(0));
@@ -308,10 +320,100 @@ test('flow recovers dead-owner locks but never expires a live owner', () => {
     fs.unlinkSync(lock);
     fs.writeFileSync(lock, '');
     fs.utimesSync(lock, new Date(0), new Date(0));
-    assert.strictEqual(updateFlow(dir, { phase: 'review' }).written, true);
+    const incomplete = updateFlow(dir, { phase: 'review' });
+    assert.strictEqual(incomplete.written, false);
+    assert.strictEqual(incomplete.retryable, true);
   } finally {
     if (previous === undefined) delete process.env.AI_STATE_DIR;
     else process.env.AI_STATE_DIR = previous;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('two writers observing one dead lock cannot reclaim each other', async () => {
+  const dir = scratchRepo();
+  const state = path.join(dir, '.state');
+  const workers = [];
+  try {
+    fs.mkdirSync(state);
+    const lock = path.join(state, '.flow.json.lock');
+    const deadPid = Number(execFileSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' }));
+    fs.writeFileSync(lock, JSON.stringify({ pid: deadPid }));
+    const launch = name => {
+      const gate = new Int32Array(new SharedArrayBuffer(4));
+      const worker = new Worker(`
+        const { parentPort, workerData } = require('worker_threads');
+        const fs = require('fs');
+        const path = require('path');
+        const gate = new Int32Array(workerData.gate);
+        const probe = process.kill;
+        let legacyStats = 0;
+        const pause = () => {
+          parentPort.postMessage({ observed: true });
+          if (Atomics.wait(gate, 0, 0, 5000) === 'timed-out') throw new Error('test gate timed out');
+        };
+        const lstat = fs.lstatSync;
+        fs.lstatSync = function(file, ...args) {
+          const stat = lstat.call(this, file, ...args);
+          // The old reclaimer's second stat has already captured the stale
+          // inode. Hold that snapshot so another reclaimer can replace it.
+          if (file === path.join(workerData.state, '.flow.json.lock') && ++legacyStats === 2) pause();
+          return stat;
+        };
+        process.env.AI_STATE_DIR = workerData.state;
+        process.kill = function(pid, signal) {
+          try { return probe.call(this, pid, signal); }
+          catch (error) {
+            if (pid === workerData.deadPid && error.code === 'ESRCH' && !legacyStats) pause();
+            throw error;
+          }
+        };
+        const open = fs.openSync;
+        let entered = false;
+        fs.openSync = function(file, ...args) {
+          if (file === path.join(workerData.state, 'flow.json') && !entered) {
+            entered = true;
+            parentPort.postMessage({ entered: true });
+          }
+          return open.call(this, file, ...args);
+        };
+        const result = require(workerData.script).updateFlow(workerData.dir, { [workerData.name]: true });
+        parentPort.postMessage({ result });
+      `, { eval: true, workerData: { dir, state, deadPid, script: SCRIPT, name, gate: gate.buffer } });
+      workers.push(worker);
+      const messages = [];
+      let receive;
+      worker.on('message', message => {
+        if (receive) { const resolve = receive; receive = null; resolve(message); }
+        else messages.push(message);
+      });
+      const next = () => messages.length ? Promise.resolve(messages.shift()) : new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('worker message timed out')), 6000);
+        receive = message => { clearTimeout(timer); resolve(message); };
+        worker.once('error', reject);
+      });
+      return { next, release: () => { Atomics.store(gate, 0, 1); Atomics.notify(gate, 0); } };
+    };
+    const first = launch('first');
+    assert.deepStrictEqual(await first.next(), { observed: true });
+    const second = launch('second');
+    assert.deepStrictEqual(await second.next(), { observed: true });
+    // Both have proved the same owner dead. Resume the later reclaimer while
+    // the first is paused. It must not reach the flow file or remove any lock.
+    second.release();
+    const refused = await second.next();
+    assert.strictEqual(refused.result?.written, false);
+    assert.strictEqual(refused.result?.retryable, true);
+    first.release();
+    assert.deepStrictEqual(await first.next(), { entered: true });
+    assert.strictEqual((await first.next()).result.written, true);
+    const flow = JSON.parse(fs.readFileSync(path.join(state, 'flow.json'), 'utf8'));
+    assert.strictEqual(flow.first, true);
+    assert.strictEqual(flow.second, undefined);
+    assert.strictEqual(JSON.parse(fs.readFileSync(lock, 'utf8')).pid, deadPid);
+    assert.deepStrictEqual(fs.readdirSync(state).sort(), ['.flow.json.lock', 'flow.json']);
+  } finally {
+    await Promise.all(workers.map(worker => worker.terminate()));
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
