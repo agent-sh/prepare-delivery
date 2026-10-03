@@ -179,3 +179,108 @@ test('updateFlow ignores prototype keys', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('flow refuses a symlink or hard link to another file', () => {
+  const dir = scratchRepo();
+  const state = path.join(dir, '.state');
+  const previous = process.env.AI_STATE_DIR;
+  try {
+    process.env.AI_STATE_DIR = state;
+    fs.mkdirSync(state);
+    const target = path.join(dir, 'other.json');
+    const original = JSON.stringify({ task: { id: 'standalone' }, git: { branch: 'feature' } });
+    fs.writeFileSync(target, original);
+    const flow = path.join(state, 'flow.json');
+    fs.symlinkSync(target, flow);
+    assert.strictEqual(updateFlow(dir, { phase: 'review' }).written, false);
+    assert.strictEqual(fs.readFileSync(target, 'utf8'), original);
+    fs.unlinkSync(flow);
+    fs.linkSync(target, flow);
+    assert.strictEqual(updateFlow(dir, { phase: 'review' }).written, false);
+    assert.strictEqual(fs.readFileSync(target, 'utf8'), original);
+  } finally {
+    if (previous === undefined) delete process.env.AI_STATE_DIR;
+    else process.env.AI_STATE_DIR = previous;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('flow path replacement after reading cannot overwrite another file', () => {
+  const dir = scratchRepo();
+  const state = path.join(dir, '.state');
+  const previous = process.env.AI_STATE_DIR;
+  const originalRead = fs.readFileSync;
+  try {
+    process.env.AI_STATE_DIR = state;
+    fs.mkdirSync(state);
+    const flow = path.join(state, 'flow.json');
+    const target = path.join(dir, 'other.json');
+    const original = 'protected fixture\n';
+    fs.writeFileSync(target, original);
+    fs.writeFileSync(flow, JSON.stringify({ task: { id: 'standalone' }, git: { branch: 'feature' } }));
+    fs.readFileSync = function(file, ...args) {
+      const result = originalRead.call(this, file, ...args);
+      if (file === flow || typeof file === 'number') {
+        fs.unlinkSync(flow);
+        fs.symlinkSync(target, flow);
+      }
+      return result;
+    };
+    const result = updateFlow(dir, { phase: 'review' });
+    fs.readFileSync = originalRead;
+    assert.strictEqual(result.written, false);
+    assert.strictEqual(fs.readFileSync(target, 'utf8'), original);
+  } finally {
+    fs.readFileSync = originalRead;
+    if (previous === undefined) delete process.env.AI_STATE_DIR;
+    else process.env.AI_STATE_DIR = previous;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('flow preserves another branch installed into the same inode after reading', () => {
+  const dir = scratchRepo();
+  const state = path.join(dir, '.state');
+  const previous = process.env.AI_STATE_DIR;
+  const originalRead = fs.readFileSync;
+  try {
+    process.env.AI_STATE_DIR = state;
+    fs.mkdirSync(state);
+    const flow = path.join(state, 'flow.json');
+    const replacement = JSON.stringify({ task: { id: 'T-7' }, git: { branch: 'other-branch' }, reviewResult: { approved: false } });
+    fs.writeFileSync(flow, JSON.stringify({ task: { id: 'standalone' }, git: { branch: 'feature' } }));
+    fs.readFileSync = function(file, ...args) {
+      const result = originalRead.call(this, file, ...args);
+      if (typeof file === 'number') fs.writeFileSync(flow, replacement);
+      return result;
+    };
+    assert.strictEqual(updateFlow(dir, { reviewResult: { approved: true } }).written, false);
+    fs.readFileSync = originalRead;
+    assert.strictEqual(fs.readFileSync(flow, 'utf8'), replacement);
+  } finally {
+    fs.readFileSync = originalRead;
+    if (previous === undefined) delete process.env.AI_STATE_DIR;
+    else process.env.AI_STATE_DIR = previous;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('inferred linked state directory cannot redirect flow outside the workspace', () => {
+  const dir = scratchRepo();
+  const external = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-external-'));
+  const previous = process.env.AI_STATE_DIR;
+  try {
+    delete process.env.AI_STATE_DIR;
+    const state = require('../scripts/delivery.js').stateDirPath(dir);
+    fs.symlinkSync(external, state, 'dir');
+    assert.strictEqual(updateFlow(dir, { phase: 'review' }).written, false);
+    assert.deepStrictEqual(fs.readdirSync(external), []);
+    process.env.AI_STATE_DIR = external;
+    assert.strictEqual(updateFlow(dir, { phase: 'review' }).written, true);
+  } finally {
+    if (previous === undefined) delete process.env.AI_STATE_DIR;
+    else process.env.AI_STATE_DIR = previous;
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(external, { recursive: true, force: true });
+  }
+});

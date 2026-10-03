@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.1] - 2026-10-04
+
+### Security
+- Keep flow ownership checks and writes on the same file descriptor. Reject
+  linked flow files, changed content, and inferred state directories outside
+  the workspace. Serialize cooperating writers while preserving explicitly
+  selected external state directories.
+- Add regression coverage for replaced paths, hard links, concurrent ownership
+  changes, and linked state directories.
+
 ## [0.2.0] - 2026-09-24
 
 ### Changed

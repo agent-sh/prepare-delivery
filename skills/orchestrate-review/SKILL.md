@@ -1,6 +1,6 @@
 ---
 name: orchestrate-review
-version: 0.2.0
+version: 0.2.1
 description: "Use for a deep, multi-pass code review of changed files, or as the review loop of a delivery pipeline. Parallel reviewers per concern, findings aggregated in code, fixes applied until clean."
 metadata:
   short-description: "Multi-pass code review orchestration"
