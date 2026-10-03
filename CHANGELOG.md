@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.1] - 2026-10-04
+
+### Security
+- Keep flow ownership checks and writes on the same file descriptor. Reject
+  linked flow files, changed content, and inferred state directories outside
+  the workspace. Serialize cooperating writers while preserving explicitly
+  selected external state directories.
+- Add regression coverage for replaced paths, hard links, concurrent ownership
+  changes, linked state directories, and competing stale-lock recovery.
+- Use unique writer intents so stale recovery never deletes a replacement lock.
+  Ignore dead owners, retain abandoned intents, and report active writers as
+  retryable. Legacy locks with unknown owners require manual removal.
+
 ## [0.2.0] - 2026-09-24
 
 ### Changed

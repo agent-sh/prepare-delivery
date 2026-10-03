@@ -6,6 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { Worker } = require('worker_threads');
 
 const { extractResult, aggregate, updateFlow } = require('../scripts/delivery.js');
 
@@ -176,6 +177,243 @@ test('updateFlow ignores prototype keys', () => {
     assert.strictEqual({}.polluted, undefined);
   } finally {
     delete process.env.AI_STATE_DIR;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('flow refuses a symlink or hard link to another file', () => {
+  const dir = scratchRepo();
+  const state = path.join(dir, '.state');
+  const previous = process.env.AI_STATE_DIR;
+  try {
+    process.env.AI_STATE_DIR = state;
+    fs.mkdirSync(state);
+    const target = path.join(dir, 'other.json');
+    const original = JSON.stringify({ task: { id: 'standalone' }, git: { branch: 'feature' } });
+    fs.writeFileSync(target, original);
+    const flow = path.join(state, 'flow.json');
+    fs.symlinkSync(target, flow);
+    assert.strictEqual(updateFlow(dir, { phase: 'review' }).written, false);
+    assert.strictEqual(fs.readFileSync(target, 'utf8'), original);
+    fs.unlinkSync(flow);
+    fs.linkSync(target, flow);
+    assert.strictEqual(updateFlow(dir, { phase: 'review' }).written, false);
+    assert.strictEqual(fs.readFileSync(target, 'utf8'), original);
+  } finally {
+    if (previous === undefined) delete process.env.AI_STATE_DIR;
+    else process.env.AI_STATE_DIR = previous;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('flow path replacement after reading cannot overwrite another file', () => {
+  const dir = scratchRepo();
+  const state = path.join(dir, '.state');
+  const previous = process.env.AI_STATE_DIR;
+  const originalRead = fs.readFileSync;
+  try {
+    process.env.AI_STATE_DIR = state;
+    fs.mkdirSync(state);
+    const flow = path.join(state, 'flow.json');
+    const target = path.join(dir, 'other.json');
+    const original = 'protected fixture\n';
+    fs.writeFileSync(target, original);
+    fs.writeFileSync(flow, JSON.stringify({ task: { id: 'standalone' }, git: { branch: 'feature' } }));
+    fs.readFileSync = function(file, ...args) {
+      const result = originalRead.call(this, file, ...args);
+      if (file === flow || typeof file === 'number') {
+        fs.unlinkSync(flow);
+        fs.symlinkSync(target, flow);
+      }
+      return result;
+    };
+    const result = updateFlow(dir, { phase: 'review' });
+    fs.readFileSync = originalRead;
+    assert.strictEqual(result.written, false);
+    assert.strictEqual(fs.readFileSync(target, 'utf8'), original);
+  } finally {
+    fs.readFileSync = originalRead;
+    if (previous === undefined) delete process.env.AI_STATE_DIR;
+    else process.env.AI_STATE_DIR = previous;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('flow preserves another branch installed into the same inode after reading', () => {
+  const dir = scratchRepo();
+  const state = path.join(dir, '.state');
+  const previous = process.env.AI_STATE_DIR;
+  const originalRead = fs.readFileSync;
+  try {
+    process.env.AI_STATE_DIR = state;
+    fs.mkdirSync(state);
+    const flow = path.join(state, 'flow.json');
+    const replacement = JSON.stringify({ task: { id: 'T-7' }, git: { branch: 'other-branch' }, reviewResult: { approved: false } });
+    fs.writeFileSync(flow, JSON.stringify({ task: { id: 'standalone' }, git: { branch: 'feature' } }));
+    fs.readFileSync = function(file, ...args) {
+      const result = originalRead.call(this, file, ...args);
+      if (typeof file === 'number') fs.writeFileSync(flow, replacement);
+      return result;
+    };
+    assert.strictEqual(updateFlow(dir, { reviewResult: { approved: true } }).written, false);
+    fs.readFileSync = originalRead;
+    assert.strictEqual(fs.readFileSync(flow, 'utf8'), replacement);
+  } finally {
+    fs.readFileSync = originalRead;
+    if (previous === undefined) delete process.env.AI_STATE_DIR;
+    else process.env.AI_STATE_DIR = previous;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('inferred linked state directory cannot redirect flow outside the workspace', () => {
+  const dir = scratchRepo();
+  const external = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-external-'));
+  const previous = process.env.AI_STATE_DIR;
+  try {
+    delete process.env.AI_STATE_DIR;
+    const state = require('../scripts/delivery.js').stateDirPath(dir);
+    fs.symlinkSync(external, state, 'dir');
+    assert.strictEqual(updateFlow(dir, { phase: 'review' }).written, false);
+    assert.deepStrictEqual(fs.readdirSync(external), []);
+    process.env.AI_STATE_DIR = external;
+    assert.strictEqual(updateFlow(dir, { phase: 'review' }).written, true);
+  } finally {
+    if (previous === undefined) delete process.env.AI_STATE_DIR;
+    else process.env.AI_STATE_DIR = previous;
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(external, { recursive: true, force: true });
+  }
+});
+
+test('flow recovers dead-owner locks but never expires a live owner', () => {
+  const dir = scratchRepo();
+  const state = path.join(dir, '.state');
+  const previous = process.env.AI_STATE_DIR;
+  try {
+    process.env.AI_STATE_DIR = state;
+    fs.mkdirSync(state);
+    const lock = path.join(state, '.flow.json.lock');
+    const deadPid = Number(execFileSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' }));
+    assert.throws(() => process.kill(deadPid, 0), { code: 'ESRCH' });
+    fs.writeFileSync(lock, JSON.stringify({ pid: deadPid, createdAt: Date.now() }));
+    assert.strictEqual(updateFlow(dir, { phase: 'review' }).written, true);
+    assert.strictEqual(fs.existsSync(lock), true);
+    const deadIntent = `${lock}.${deadPid}.${'a'.repeat(32)}`;
+    fs.writeFileSync(deadIntent, '');
+    assert.strictEqual(updateFlow(dir, { phase: 'validation' }).written, true);
+    assert.strictEqual(fs.readFileSync(deadIntent, 'utf8'), '');
+    const activeIntent = `${lock}.${process.pid}.${'b'.repeat(32)}`;
+    fs.writeFileSync(activeIntent, '');
+    fs.utimesSync(activeIntent, new Date(0), new Date(0));
+    const busy = updateFlow(dir, { phase: 'review' });
+    assert.strictEqual(busy.written, false);
+    assert.strictEqual(busy.retryable, true);
+    fs.unlinkSync(activeIntent);
+    const live = JSON.stringify({ pid: process.pid, createdAt: 1 });
+    fs.writeFileSync(lock, live);
+    fs.utimesSync(lock, new Date(0), new Date(0));
+    const result = updateFlow(dir, { phase: 'review' });
+    assert.strictEqual(result.written, false);
+    assert.strictEqual(result.retryable, true);
+    assert.strictEqual(fs.readFileSync(lock, 'utf8'), live);
+    fs.unlinkSync(lock);
+    fs.writeFileSync(lock, '');
+    fs.utimesSync(lock, new Date(0), new Date(0));
+    const incomplete = updateFlow(dir, { phase: 'review' });
+    assert.strictEqual(incomplete.written, false);
+    assert.strictEqual(incomplete.retryable, true);
+  } finally {
+    if (previous === undefined) delete process.env.AI_STATE_DIR;
+    else process.env.AI_STATE_DIR = previous;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('two writers observing one dead lock cannot reclaim each other', async () => {
+  const dir = scratchRepo();
+  const state = path.join(dir, '.state');
+  const workers = [];
+  try {
+    fs.mkdirSync(state);
+    const lock = path.join(state, '.flow.json.lock');
+    const deadPid = Number(execFileSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' }));
+    fs.writeFileSync(lock, JSON.stringify({ pid: deadPid }));
+    const launch = name => {
+      const gate = new Int32Array(new SharedArrayBuffer(4));
+      const worker = new Worker(`
+        const { parentPort, workerData } = require('worker_threads');
+        const fs = require('fs');
+        const path = require('path');
+        const gate = new Int32Array(workerData.gate);
+        const probe = process.kill;
+        let legacyStats = 0;
+        const pause = () => {
+          parentPort.postMessage({ observed: true });
+          if (Atomics.wait(gate, 0, 0, 5000) === 'timed-out') throw new Error('test gate timed out');
+        };
+        const lstat = fs.lstatSync;
+        fs.lstatSync = function(file, ...args) {
+          const stat = lstat.call(this, file, ...args);
+          // The old reclaimer's second stat has already captured the stale
+          // inode. Hold that snapshot so another reclaimer can replace it.
+          if (file === path.join(workerData.state, '.flow.json.lock') && ++legacyStats === 2) pause();
+          return stat;
+        };
+        process.env.AI_STATE_DIR = workerData.state;
+        process.kill = function(pid, signal) {
+          try { return probe.call(this, pid, signal); }
+          catch (error) {
+            if (pid === workerData.deadPid && error.code === 'ESRCH' && !legacyStats) pause();
+            throw error;
+          }
+        };
+        const open = fs.openSync;
+        let entered = false;
+        fs.openSync = function(file, ...args) {
+          if (file === path.join(workerData.state, 'flow.json') && !entered) {
+            entered = true;
+            parentPort.postMessage({ entered: true });
+          }
+          return open.call(this, file, ...args);
+        };
+        const result = require(workerData.script).updateFlow(workerData.dir, { [workerData.name]: true });
+        parentPort.postMessage({ result });
+      `, { eval: true, workerData: { dir, state: fs.realpathSync(state), deadPid, script: SCRIPT, name, gate: gate.buffer } });
+      workers.push(worker);
+      const messages = [];
+      let receive;
+      worker.on('message', message => {
+        if (receive) { const resolve = receive; receive = null; resolve(message); }
+        else messages.push(message);
+      });
+      const next = () => messages.length ? Promise.resolve(messages.shift()) : new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('worker message timed out')), 6000);
+        receive = message => { clearTimeout(timer); resolve(message); };
+        worker.once('error', reject);
+      });
+      return { next, release: () => { Atomics.store(gate, 0, 1); Atomics.notify(gate, 0); } };
+    };
+    const first = launch('first');
+    assert.deepStrictEqual(await first.next(), { observed: true });
+    const second = launch('second');
+    assert.deepStrictEqual(await second.next(), { observed: true });
+    // Both have proved the same owner dead. Resume the later reclaimer while
+    // the first is paused. It must not reach the flow file or remove any lock.
+    second.release();
+    const refused = await second.next();
+    assert.strictEqual(refused.result?.written, false);
+    assert.strictEqual(refused.result?.retryable, true);
+    first.release();
+    assert.deepStrictEqual(await first.next(), { entered: true });
+    assert.strictEqual((await first.next()).result.written, true);
+    const flow = JSON.parse(fs.readFileSync(path.join(state, 'flow.json'), 'utf8'));
+    assert.strictEqual(flow.first, true);
+    assert.strictEqual(flow.second, undefined);
+    assert.strictEqual(JSON.parse(fs.readFileSync(lock, 'utf8')).pid, deadPid);
+    assert.deepStrictEqual(fs.readdirSync(state).sort(), ['.flow.json.lock', 'flow.json']);
+  } finally {
+    await Promise.all(workers.map(worker => worker.terminate()));
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });

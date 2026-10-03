@@ -261,35 +261,138 @@ function merge(target, patch) {
 // Writes the fields /ship reads from --state-file (git.branch, git.baseBranch, reviewResult).
 // A /next-task flow owned by another branch is someone else's run and is left alone. A standalone
 // flow from another branch is this script's own leftover and is replaced.
+function acquireFlowLock(file) {
+  const busy = () => { throw Object.assign(new Error('another flow writer may still be active'), { code: 'EEXIST' }); };
+  const alive = pid => {
+    if (!Number.isSafeInteger(pid) || pid <= 0) return true;
+    try { process.kill(pid, 0); return true; }
+    catch (error) { return error.code !== 'ESRCH'; }
+  };
+  // Announce before scanning. A later contender sees this intent; overlapping
+  // scans may both decline, but cannot both enter. Each writer removes only its
+  // unique intent. Dead intents are ignored, never reclaimed through a shared
+  // pathname whose replacement could belong to a new writer.
+  const intent = `${file}.${process.pid}.${crypto.randomBytes(16).toString('hex')}`;
+  const fd = fs.openSync(intent, 'wx', 0o600);
+  const release = () => {
+    try { fs.unlinkSync(intent); }
+    finally { fs.closeSync(fd); }
+  };
+  try {
+    // Older versions used a single metadata file. Read it through a descriptor
+    // and leave it alone. Unknown owners cannot safely be declared dead by age.
+    let legacy;
+    try { legacy = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0)); }
+    catch (error) { if (error.code !== 'ENOENT') busy(); }
+    if (legacy !== undefined) {
+      try {
+        const stat = fs.fstatSync(legacy);
+        if (!stat.isFile() || stat.nlink !== 1) busy();
+        let owner;
+        try { owner = JSON.parse(fs.readFileSync(legacy, 'utf8')); } catch { busy(); }
+        if (alive(owner?.pid)) busy();
+      } finally { fs.closeSync(legacy); }
+    }
+    const prefix = `${path.basename(file)}.`;
+    for (const name of fs.readdirSync(path.dirname(file))) {
+      if (!name.startsWith(prefix) || name === path.basename(intent)) continue;
+      const match = /^(\d+)\.[a-f0-9]{32}$/.exec(name.slice(prefix.length));
+      if (!match || alive(Number(match[1]))) busy();
+    }
+    return release;
+  } catch (error) {
+    release();
+    throw error;
+  }
+}
+
 function updateFlow(cwd, patch) {
   const branch = git(['branch', '--show-current'], cwd);
-  const dir = stateDirPath(cwd);
-  const file = path.join(dir, 'flow.json');
-  let flow = null;
-  if (fs.existsSync(file)) {
-    try { flow = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return { written: false, file, reason: 'flow.json is not valid JSON' }; }
-    const owner = flow && flow.git && flow.git.branch;
-    if (owner && owner !== branch) {
-      if (!(flow.task && flow.task.id === 'standalone')) {
-        return { written: false, file, reason: `flow.json belongs to a /next-task run on branch ${owner}` };
-      }
-      flow = null;
+  let dir = stateDirPath(cwd);
+  let file = path.join(dir, 'flow.json');
+  fs.mkdirSync(dir, { recursive: true });
+  dir = fs.realpathSync(dir);
+  if (!process.env.AI_STATE_DIR) {
+    const relative = path.relative(fs.realpathSync(cwd), dir);
+    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+      return { written: false, file, reason: 'inferred state directory points outside the workspace' };
     }
   }
-  if (!flow) {
-    flow = {
-      task: { id: 'standalone', title: `Deliver ${branch}`, source: 'manual' },
-      policy: { stoppingPoint: 'merged' },
-      status: 'in_progress',
-      createdAt: new Date().toISOString()
-    };
+  file = path.join(dir, 'flow.json');
+  const lockFile = path.join(dir, '.flow.json.lock');
+  let lock;
+  try { lock = acquireFlowLock(lockFile); }
+  catch (error) { return { written: false, file, retryable: error.code === 'EEXIST', reason: `cannot lock flow.json (${error.code}); another writer may still be active` }; }
+  try {
+    let fd;
+    let created = false;
+    const flags = fs.constants.O_RDWR | (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0);
+    try {
+      try { fd = fs.openSync(file, flags); }
+      catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+        fd = fs.openSync(file, flags | fs.constants.O_CREAT | fs.constants.O_EXCL, 0o600);
+        created = true;
+      }
+    } catch (error) {
+      return { written: false, file, reason: `cannot safely open flow.json (${error.code})` };
+    }
+    try {
+      // Read, check ownership, and write through one descriptor. Reopening the
+      // pathname after checking it can follow a replacement link to another file.
+      const opened = fs.fstatSync(fd);
+      const unchanged = () => {
+        try {
+          const current = fs.lstatSync(file);
+          return current.isFile() && current.dev === opened.dev && current.ino === opened.ino && current.nlink === 1;
+        } catch { return false; }
+      };
+      if (!opened.isFile() || opened.nlink !== 1 || !unchanged()) {
+        return { written: false, file, reason: 'flow.json must be a single-link regular file' };
+      }
+      let flow = null;
+      let original = '';
+      if (!created) {
+        try {
+          original = fs.readFileSync(fd, 'utf8');
+          flow = JSON.parse(original);
+        } catch { return { written: false, file, reason: 'flow.json is not valid JSON' }; }
+        const owner = flow && flow.git && flow.git.branch;
+        if (owner && owner !== branch) {
+          if (!(flow.task && flow.task.id === 'standalone')) {
+            return { written: false, file, reason: `flow.json belongs to a /next-task run on branch ${owner}` };
+          }
+          flow = null;
+        }
+      }
+      if (!flow) {
+        flow = {
+          task: { id: 'standalone', title: `Deliver ${branch}`, source: 'manual' },
+          policy: { stoppingPoint: 'merged' },
+          status: 'in_progress',
+          createdAt: new Date().toISOString()
+        };
+      }
+      merge(flow, patch);
+      flow.git = merge(flow.git || {}, { branch });
+      flow.lastUpdate = new Date().toISOString();
+      if (!unchanged()) return { written: false, file, reason: 'flow.json changed during the update' };
+      const currentSize = fs.fstatSync(fd).size;
+      if (currentSize !== Buffer.byteLength(original)) return { written: false, file, reason: 'flow.json contents changed during the update' };
+      const current = Buffer.alloc(currentSize);
+      const read = fs.readSync(fd, current, 0, currentSize, 0);
+      if (read !== currentSize || current.toString('utf8') !== original) return { written: false, file, reason: 'flow.json contents changed during the update' };
+      const data = Buffer.from(`${JSON.stringify(flow, null, 2)}\n`, 'utf8');
+      const written = fs.writeSync(fd, data, 0, data.length, 0);
+      if (written !== data.length) throw new Error('incomplete flow.json write');
+      fs.ftruncateSync(fd, data.length);
+      return { written: true, file };
+    } finally {
+      fs.closeSync(fd);
+    }
+  } finally {
+    lock();
   }
-  merge(flow, patch);
-  flow.git = merge(flow.git || {}, { branch });
-  flow.lastUpdate = new Date().toISOString();
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(file, `${JSON.stringify(flow, null, 2)}\n`, 'utf8');
-  return { written: true, file };
 }
 
 function cmdFlow(args) {

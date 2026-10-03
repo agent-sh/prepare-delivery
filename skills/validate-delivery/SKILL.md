@@ -1,7 +1,7 @@
 ---
 name: validate-delivery
 description: "Use when the user asks to validate delivery, check readiness, or verify a branch is done. Runs tests and build, checks the task's requirements and review status, returns approve or fix instructions."
-version: 0.2.0
+version: 0.2.1
 ---
 
 # validate-delivery
