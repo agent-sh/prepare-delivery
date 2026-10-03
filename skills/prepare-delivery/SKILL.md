@@ -61,6 +61,11 @@ refused. An active writer returns `retryable: true`; retry after it finishes,
 without claiming that state was saved. Dead-PID writer intents are ignored
 without deleting them. Known live owners are never expired by age. An old shared
 lock with missing or invalid owner metadata needs manual inspection and removal.
+Writer exclusion assumes a local, coherent filesystem and one host's PID
+namespace. A shared multi-host state directory needs distributed coordination.
+Keep the state directory's parent namespace trusted and stable while updating.
+The inferred-directory check rejects an existing escape; it does not anchor
+filesystem operations against an adversary replacing the directory's ancestors.
 
 ## Done
 
