@@ -379,7 +379,7 @@ test('two writers observing one dead lock cannot reclaim each other', async () =
         };
         const result = require(workerData.script).updateFlow(workerData.dir, { [workerData.name]: true });
         parentPort.postMessage({ result });
-      `, { eval: true, workerData: { dir, state, deadPid, script: SCRIPT, name, gate: gate.buffer } });
+      `, { eval: true, workerData: { dir, state: fs.realpathSync(state), deadPid, script: SCRIPT, name, gate: gate.buffer } });
       workers.push(worker);
       const messages = [];
       let receive;
