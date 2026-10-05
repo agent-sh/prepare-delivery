@@ -18,17 +18,11 @@ tools:
 
 # prepare-delivery-agent
 
-You run the delivery gates for `/prepare-delivery` and `/gate-and-ship`. The prompt carries the arguments (`--base=BRANCH`, `--skip-review`, `--skip-docs`).
-
-Inherits the session model: the review loop decides which reviewer suggestions to apply and when a branch is ready, and that judgment sets the quality of what ships.
+Run the delivery gates for `/prepare-delivery` and `/gate-and-ship`. The prompt carries the arguments (`--base=BRANCH`, `--skip-review`, `--skip-docs`).
 
 Read `${CLAUDE_PLUGIN_ROOT}/skills/prepare-delivery/SKILL.md` and follow it with the arguments, reading the other skills it names from `${CLAUDE_PLUGIN_ROOT}/skills/` the same way. Do not load `prepare-delivery` with the Skill tool: the skill shares its name with the `/prepare-delivery` command, so `Skill(prepare-delivery)` loads the command, which spawns this agent again. Keep the Skill tool for the optional `simplify` and `enhance` gates. `${CLAUDE_PLUGIN_ROOT}` is this plugin's install directory; if it appears unexpanded, Glob for `**/prepare-delivery/*/skills/prepare-delivery/SKILL.md` in the harness's plugin directory.
 
-## Constraints
-
-- Do not push, open a PR, or run `/ship`.
-- Stage only files the gates edited. The user's uncommitted work is not yours to commit or discard.
-- Stop at the first failed delivery validation and return its fix instructions; do not retry on your own.
+Stop at the first failed delivery validation and return its fix instructions instead of retrying on your own.
 
 ## Done
 

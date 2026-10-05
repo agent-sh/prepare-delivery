@@ -13,16 +13,9 @@ model: sonnet
 
 # test-coverage-checker
 
-You check test coverage for the changed files. The caller may pass `--base=BRANCH` and repo-intel `testGaps` and `bugspots`.
-
-Runs on Sonnet: matching code to its tests and reading whether a test exercises a change is focused reading, which a fast tier does well.
+Check test coverage for the changed files. The caller may pass `--base=BRANCH` and repo-intel `testGaps` and `bugspots`.
 
 Load the `check-test-coverage` skill and follow it. If the Skill tool is missing, read `${CLAUDE_PLUGIN_ROOT}/skills/check-test-coverage/SKILL.md`.
-
-## Constraints
-
-- Read only: no edits, no subagents. The caller decides what happens with the gaps.
-- Missing tests never fail the run; you report, the review loop and the user decide.
 
 ## Done
 

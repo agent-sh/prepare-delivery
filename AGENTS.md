@@ -2,9 +2,25 @@
 
 > Pre-ship quality gates - deslop, simplify, agnix, enhance, review loop, delivery validation, docs sync
 
+## Overview
+
+An agentsys plugin: Markdown prompts in `commands/`, `agents/` and `skills/`, plus `scripts/delivery.js`, a dependency-free Node.js script for the deterministic parts (branch context, result-block parsing, review aggregation, flow state). Tests use `node:test`; CI runs them on Linux and macOS.
+
+## Conventions
+
+- Output is plain text with the status markers `[OK]`, `[ERROR]`, `[WARN]`, `[CRITICAL]`, and no emojis or ASCII art. People read it in terminals and other plugins parse it; spend tokens on content, not decoration.
+- In prose, write a spaced single dash (` - `), not ` -- ` or an em dash.
+- Put summaries, plans and audit notes in the PR or issue, not in committed files: committed notes go stale.
+- Changes reach main through a PR. A feature or fix is done when tests that cover it pass.
+- Keep git hooks on: commit and push without `--no-verify`.
+- When a script or tool fails, report the failure before working around it, so the tool gets fixed.
+- Deterministic logic lives in `scripts/delivery.js`: result-block parsing, review aggregation and its false-positive rules, flow state. Change it there, with a test, not in skill prose.
+- The REVIEWER CONTRACT block in `skills/orchestrate-review/SKILL.md` has a twin in the [audit-project plugin's reviewer prompt](https://github.com/agent-sh/audit-project/blob/main/commands/audit-project-agents.md). When you edit either block, update both to the same intent. No check enforces this yet.
+- When goals conflict, rank them: plugin users' experience, automation that needs no babysitting, token cost, output quality, simplicity.
+
 ## Agents
 
-- **prepare-delivery-agent** (inherits the session model) - orchestrates the full pre-ship pipeline via skill
+- **prepare-delivery-agent** (inherits the session model, since its judgment decides which review fixes ship) - orchestrates the full pre-ship pipeline via skill
 - **delivery-validator** (sonnet) - autonomous pass/fail validation after review approval
 - **test-coverage-checker** (sonnet) - validates test quality for changed files (advisory)
 
@@ -18,35 +34,6 @@
 ## Commands
 
 - prepare-delivery
-
-## Critical Rules
-
-1. **Plain text output** - No emojis, no ASCII art. Use `[OK]`, `[ERROR]`, `[WARN]`, `[CRITICAL]` for status markers.
-2. **No unnecessary files** - Don't create summary files, plan files, audit files, or temp docs.
-3. **Task is not done until tests pass** - Every feature/fix must have quality tests.
-4. **Create PRs for non-trivial changes** - No direct pushes to main.
-5. **Always run git hooks** - Never bypass pre-commit or pre-push hooks.
-6. **Use single dash for em-dashes** - In prose, use ` - ` (single dash with spaces), never ` -- `.
-7. **Report script failures before manual fallback** - Never silently bypass broken tooling.
-8. **Token efficiency** - Save tokens over decorations.
-9. **Deterministic logic lives in `scripts/delivery.js`** - Parsing result blocks, review aggregation and the false-positive rules, flow state. Change it there, with a test, not in skill prose.
-10. **Reviewer contract sync** - The REVIEWER CONTRACT block in `skills/orchestrate-review/SKILL.md` is duplicated in `audit-project/commands/audit-project-agents.md`. When editing either block, update both. No tool enforces this today; a CI check is a known follow-up.
-
-## Model Selection
-
-| Model | When to Use |
-|-------|-------------|
-| **Opus** | Complex reasoning, analysis, planning |
-| **Sonnet** | Validation, pattern matching, most agents |
-| **Haiku** | Mechanical execution, no judgment needed |
-
-## Core Priorities
-
-1. User DX (plugin users first)
-2. Worry-free automation
-3. Token efficiency
-4. Quality output
-5. Simplicity
 
 ## Cross-Plugin Dependencies
 
@@ -62,16 +49,15 @@
 | Docs sync | sync-docs | `sync-docs:sync-docs-agent` |
 | Ship (via /gate-and-ship) | ship | `ship:ship` command |
 
+## Dev commands
+
+```bash
+npm test                        # node:test suite
+node --check scripts/delivery.js
+agnix .                         # agent config lint
+```
+
 ## References
 
 - Part of the [agentsys](https://github.com/agent-sh/agentsys) ecosystem
 - https://agentskills.io
-
-## Validation scope
-
-Choose checks that cover the changed behavior. For CPU-only tooling, documentation
-and configuration changes, run the relevant CPU tests, static checks and configuration
-validation. Do not require a blanket GPU gate for those changes. Require GPU
-qualification when GPU, runtime or model behavior, or related claims, change.
-Preserve applicable native, model and hardware qualification gates. CPU checks do
-not qualify GPU behavior.

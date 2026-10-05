@@ -33,7 +33,7 @@ Use judgment on what "changed behavior" means: a rename or a log line does not n
 ## Constraints
 
 - Read only. Do not edit files or spawn agents; the caller decides what to do with gaps.
-- Missing tests never fail the run. Report them with a clear recommendation.
+- Report missing tests with a clear recommendation. They do not fail the run.
 
 ## Output
 
