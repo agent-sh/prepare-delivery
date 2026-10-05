@@ -35,6 +35,8 @@ Each gate commits only the files it edited, so uncommitted work in your tree is 
 
 `scripts/delivery.js` does the deterministic parts: branch context and repo-intel signals (`context`), parsing result blocks (`extract`), the review aggregation and its false-positive rules (`aggregate`), and the flow state `/ship --state-file` reads (`flow`).
 
+Flow-state writes take a lock against other writers. Intents left by dead writers are ignored without being deleted, and a live owner never expires by age; an old lock with missing or invalid owner metadata needs manual inspection and removal. The lock assumes a local, coherent filesystem and one host's PID namespace, so a state directory shared across hosts needs its own coordination. Keep the state directory's parent trusted and stable during updates: the inferred-directory check rejects an existing escape, but it does not guard against an adversary replacing the directory's ancestors mid-write.
+
 ## Composability
 
 ```

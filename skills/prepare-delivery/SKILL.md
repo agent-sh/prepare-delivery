@@ -56,16 +56,7 @@ node <plugin>/scripts/delivery.js flow --json '{"git":{"baseBranch":"<base>"},"p
 
 It creates a standalone flow when none exists, updates one owned by this branch, replaces a standalone flow left by another branch, and leaves a `/next-task` flow owned by another branch untouched (it reports `written: false`). Write `reviewResult.approved: true` only when the review loop approved, or was skipped by flag with `skipped: true`.
 
-Read the `reason` when `written` is false. Unsafe paths or changed content are
-refused. An active writer returns `retryable: true`; retry after it finishes,
-without claiming that state was saved. Dead-PID writer intents are ignored
-without deleting them. Known live owners are never expired by age. An old shared
-lock with missing or invalid owner metadata needs manual inspection and removal.
-Writer exclusion assumes a local, coherent filesystem and one host's PID
-namespace. A shared multi-host state directory needs distributed coordination.
-Keep the state directory's parent namespace trusted and stable while updating.
-The inferred-directory check rejects an existing escape; it does not anchor
-filesystem operations against an adversary replacing the directory's ancestors.
+Read the `reason` when `written` is false. The script refuses unsafe paths and content that changed under it. An active writer returns `retryable: true`: retry after it finishes, and do not report the state as saved until a write succeeds. An old lock with missing or invalid owner metadata is not cleared automatically; report it so the user can inspect and remove it. The locking assumptions are in the README.
 
 ## Done
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- Second pass over the prompts for current models. The three agents no longer restate constraints their skills already hold, or explain their model tier (AGENTS.md keeps that). The reviewer false-positive contract in orchestrate-review drops IMPORTANT/MUST and keeps the same rules and markers. The command, agent, skill and AGENTS.md files went from 4,518 to 4,236 words.
+- The flow-state locking assumptions moved from the prepare-delivery skill to the README. The skill keeps what the agent acts on: read `reason`, retry on `retryable`, report a lock that needs manual removal.
+- AGENTS.md drops the generic model table and the GPU validation text this CPU-only repo does not need, adds an Overview and dev commands, and links the audit-project reviewer contract by URL instead of a path agnix reported as missing.
+
 ## [0.2.1] - 2026-10-04
 
 ### Security
