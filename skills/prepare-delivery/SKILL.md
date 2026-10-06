@@ -1,7 +1,7 @@
 ---
 name: prepare-delivery
 description: "Use when the user asks to prepare delivery, run quality gates, deslop and review, or validate before shipping. Runs local gates on the branch and reports readiness. Does not push."
-version: 0.2.1
+version: 0.3.0
 argument-hint: "[--base=BRANCH] [--skip-review] [--skip-docs]"
 ---
 

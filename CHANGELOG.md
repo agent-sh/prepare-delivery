@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-06
+
 ### Changed
 - Second pass over the prompts for current models. The three agents no longer restate constraints their skills already hold, or explain their model tier (AGENTS.md keeps that). The reviewer false-positive contract in orchestrate-review stays word for word identical to its twin in audit-project, emphasis included, because it is the prompt-injection guard. The command, agent, skill and AGENTS.md files went from 4,518 to 4,284 words.
 - The flow-state locking assumptions moved from the prepare-delivery skill to the README. The skill keeps what the agent acts on: read `reason`, retry on `retryable`, report a lock that needs manual removal.
