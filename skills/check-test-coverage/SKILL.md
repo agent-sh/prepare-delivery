@@ -1,7 +1,7 @@
 ---
 name: check-test-coverage
 description: "Use when checking whether new or changed code has meaningful tests: tests exist, were updated with the change, and exercise the new behavior. Advisory; reports gaps, edits nothing."
-version: 0.2.1
+version: 0.3.0
 argument-hint: "[--base=BRANCH]"
 ---
 
